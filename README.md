@@ -3,6 +3,10 @@
 ![conceptual model](
 4_second_conc_model_refined.jpg "Interim conceptual model")
 
+
+## Archive
+Interim Approaches have been stored in "Archive" and were branched. 
+
 ## Getting started
 
 To make it easy for you to get started with GitLab, here's a list of recommended next steps.
