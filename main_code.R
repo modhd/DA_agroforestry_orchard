@@ -65,9 +65,7 @@ orchard_revitalization <- function(){
   # plot(drought_events)
   
   # common costs----
-  # HeH urgent - also vv as not clear how much exactly mower would cost?!
-  # HeH varify var_cv_cost
-  costs_establishment_hay[1] <- vv(costs_establishment_hay_Eur, var_cv_costs_Eur, 1)
+  costs_establishment_hay[1] <- costs_establishment_hay_Eur
   costs_mainteance_hay <- vv(mean_yield_hay_labor_h, var_cv_yield_hay_labor_h, n_years)*
                                     labor_wage_Eur_per_h_brutto
    
@@ -83,7 +81,7 @@ orchard_revitalization <- function(){
   # orchard-related aspects----
   ## risks----
   ### yield optimum----
-  # HeH urgent - if no risks would decrease the yields as basleine (gompertz) and then substract risks?
+  # HeH urgent - if no risks would decrease the yields as baseline (gompertz) and then substract risks?
     
   
   ### frost----
@@ -112,13 +110,12 @@ orchard_revitalization <- function(){
   risk_sum_yield_reductions <- events_drought + events_damage #+ events_drought
   #plot(risk_sum_yield_reductions)
   # HeH include a factor that shows: older trees are more stable and less risk affected
-  # HeH: urgent - how to do it better? 
-  risk_age_vulnerability <- rep(0, n_years)
-  risk_age_vulnerability[1:27] <- (vv(mean_risk_affection_age, var_cv_risk_affection_age,
-                                      relative_trend = -0.5,
-                                      27))
-  risk_age_vulnerability[28:55] <- rev(risk_age_vulnerability[1:27])
-  plot(risk_age_vulnerability)
+  # risk_age_vulnerability <- rep(0, n_years)
+  # risk_age_vulnerability[1:27] <- (vv(mean_risk_affection_age, var_cv_risk_affection_age,
+  #                                     relative_trend = -0.5,
+  #                                     27))
+  # risk_age_vulnerability[28:55] <- rev(risk_age_vulnerability[1:27])
+  # plot(risk_age_vulnerability)
   
   
   ### planting allowance----
