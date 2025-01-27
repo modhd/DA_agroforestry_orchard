@@ -6,7 +6,7 @@ The decision can be vizualized as follows:
 4_second_conc_model_refined.jpg "Interim decision model")
 
 The interim reulting conceptual model:
-![conceptual model](1_influencing_factors.png "Interim conceptual model")
+![conceptual model](2_influencing_factors.png "Interim conceptual model")
 Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
 
 ## Archive
