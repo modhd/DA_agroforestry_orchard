@@ -150,7 +150,7 @@ orchard_revitalization <- function(){
   costs_mainteance_hay_Eur <- labor_mainteance_hay_h * labor_wage_Eur_per_h_brutto
   
   # hay benefit
-  benefit_hay <- hay_yield_revenue_Eur - 
+  benefits_hay <- hay_yield_revenue_Eur - 
     costs_establishment_hay - 
     costs_mainteance_hay_Eur
   
@@ -262,9 +262,10 @@ orchard_revitalization <- function(){
                           discount_rate, 
                           calculate_NPV = TRUE)
   
-  NPV_hay <- discount(benefits_orchard, 
+  NPV_hay <- discount(benefits_hay, 
                       discount_rate, 
                       calculate_NPV = TRUE)
+  NPV_decision <- NPV_hay - NPV_orchard
   
   ## benefit-labor-ratio
   #benefit_labor_ratio_hay <- benefit_hay/labor_hay_harvest_h
@@ -275,11 +276,35 @@ orchard_revitalization <- function(){
   # tree_fruit_reliability
   
   return(list(NPV_hay = NPV_hay,
-              NPV_orchard = NPV_orchard))
+              NPV_orchard = NPV_orchard,
+              NPV_decision = NPV_decision))
   
 }
 
+################################################################################
+# Model run
 model_runs <- mcSimulation(estimate = as.estimate(estimate_data),
                            model_function = orchard_revitalization,
                            numberOfModelRuns = 100,
                            functionSyntax = "plainNames")
+
+################################################################################
+# Model results----
+
+## NPV distributions----
+plot_distributions(mcSimulation_object = model_runs,
+                   "hist_simple_overlay",
+                   vars = c("NPV_orchard", "NPV_hay"),
+                   #method = "smooth_simple_overlay",
+                   #method = "boxplot_density",
+                   #old_names = c("NPV_orchard", "NPV_hay"),
+                   new_names = "Outcome distribution for profits")
+
+## VOI----
+
+
+## EVPI----
+
+
+
+                   
