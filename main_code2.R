@@ -60,7 +60,8 @@ orchard_revitalization <- function(){
                                  value_if_not = rep(0, n_years),
                                  n = n_years)
   
-  plot(events_drought)
+  #plot(events_drought)
+  #hist(events_drought)
   
   ## spring frost
   events_frost <- chance_event(risk_spring_frost,
@@ -82,7 +83,7 @@ orchard_revitalization <- function(){
                                  value_if_not = rep(0, n_years),
                                  n = n_years)
   
-  plot(events_disease)
+  #plot(events_disease)
   
   
   ## unknown-events
@@ -93,9 +94,30 @@ orchard_revitalization <- function(){
                                                  lower_limit = 0.1)),
                                   value_if_not = rep(0, n_years),
                                   n = n_years)
-  plot(events_uncert_risks)
+  #plot(events_uncert_risks)
 
   
+  # hay benefit----
+  # hay yield
+  # HeH: discuss - too humid also bad, but that would not affect trees so leave it out
+  hay_yield_t_max <- vv(hay_mean_t, hay_var_t, n_years)
+  hay_yield_t <- hay_yield_t_max*events_drought*events_uncert_risks
+  hay_yield_revenue_Eur <- 2*hay_yield_t*(vv(hay_price_mean_Eur_t, 
+                                             hay_price_var_Eur_t, 
+                                             n_years)) # 2 yields per year, HeH discuss: yield dependent
+  
+  # hay costs
+  costs_establishment_hay_Eur[1] <- hay_costs_establishment_Eur
+  labor_mainteance_hay_h <- vv(hay_labor_harvest_mean_h, hay_labor_harvest_var_h,
+                               n_years)
+  costs_mainteance_hay_Eur <- labor_mainteance_hay_h * labor_wage_Eur_per_h_brutto
+  
+  # hay benefit
+  benefits_hay <- hay_yield_revenue_Eur - 
+    costs_establishment_hay - 
+    costs_mainteance_hay_Eur
+  
+  # orchard----
   # fruit quality and quantity----
   # max fruit yield
   fruit_yield_max_kg <- gompertz_yield(
@@ -109,15 +131,15 @@ orchard_revitalization <- function(){
     no_yield_before_first_estimate = TRUE
   )
   
-  plot(fruit_yield_max_kg)
+  #plot(fruit_yield_max_kg)
   
   ## influence of risks---- 
-  # tree age influence: assuming it as parameterized quadratic function
+  # tree age influence: assuming it as parameterised quadratic function
   # p1 and p2 are very uncertain -> identify whether they need more detail
   year <- 1:55
   tree_age_influence <- uncert_tree_parameter_age_2*
     (year - uncert_tree_parameter_age_1)^2
-  plot(tree_age_influence) 
+  #plot(tree_age_influence) 
   
   tree_vulnerability <- uncert_tree_vulnerability * tree_age_influence
   
@@ -127,41 +149,18 @@ orchard_revitalization <- function(){
      * tree_vulnerability)
   # check for negatives values- become 0!
   tree_fruit_quantity_kg[tree_fruit_quantity_kg < 0] <- 0
-  plot(tree_fruit_quantity_kg)
+  #plot(tree_fruit_quantity_kg)
   
   # on quality
   tree_fruit_quality_percent <- 1 - 
     ((events_drought + events_disease + events_uncert_risks) 
      * tree_vulnerability)
 
-  
-  # hay benefit----
-  # hay yield
-  # HeH: discuss - too humid also bad, but that would not affect trees so leave it out
-  hay_yield_t_max <- vv(hay_mean_t, hay_var_t, n_years)
-  hay_yield_t <- hay_yield_t_max*events_drought*events_uncert_risks
-  hay_yield_revenue_Eur <- 2*hay_yield_t*(vv(hay_price_mean_Eur_t, 
-                                             hay_price_var_Eur_t, 
-                                             n_years)) # 2 yields per year, HeH discuss: yield dependent
-  # hay costs
-  costs_establishment_hay_Eur[1] <- hay_costs_establishment_Eur
-  labor_mainteance_hay_h <- vv(hay_labor_harvest_mean_h, hay_labor_harvest_var_h,
-                             n_years)
-  costs_mainteance_hay_Eur <- labor_mainteance_hay_h * labor_wage_Eur_per_h_brutto
-  
-  # hay benefit
-  benefits_hay <- hay_yield_revenue_Eur - 
-    costs_establishment_hay - 
-    costs_mainteance_hay_Eur
-  
-
-  # orchard----
-  
   ## supply chain investment----
   labor_supply_chain_building_h <- vv(supply_chain_invest_mean_h,
                                        supply_chain_invest_mean_h, n_years)
   
-  ## fruits----
+  ## fruit selling----
   ## walnut price (optional! HeH may keep out?)
   for (i in 1:n_years) {
     if (tree_fruit_quantity_kg[i] < uncert_wholesail_threshhold_t) {
@@ -172,36 +171,11 @@ orchard_revitalization <- function(){
   }
   #plot(walnut_price)
   
-  ## walnut price----
+  ## walnut price
   tree_fruit_price_Eur_per_kg <- (tree_fruit_quality_percent * uncert_influence_quali) *
     (labor_supply_chain_building_h * uncert_influence_supply_chain_invest) *
     (walnut_price) 
 
-  
-  ### yield costs----
-  # HeH machinery scenario
-  # machinery and labor for yield
-  years_buying_machines <- floor(n_years/10) # HeH every 10 years, new machinery must be bought
-  costs_mainteance_trees_machinery_Eur[seq(10, 
-     length(costs_mainteance_trees_machinery_Eur), 
-     by = 10)] <- vv(fruit_price_machinery_mean_Eur, 
-                     fruit_price_machinery_var_Eur, 
-                     n = years_buying_machines)
-  plot(costs_mainteance_trees_machinery_Eur)
-  
-  # labor fruit yield
-  labor_fruit_basis_h <- fruit_labor_harvest_basis_h # HeH to be refined!
-  labor_fruit_quanti_dependend_h <- tree_fruit_quantity_kg * fruit_labor_harvest_h_per_kg # HeH to be refined! vv
-    
-  labor_fruit_yield_h <- labor_fruit_basis_h +
-    labor_fruit_quanti_dependend_h
-  
-  # tree pruning
-  labor_fruit_pruning_h <- fruit_labor_pruning_h_per_tree * n_trees # HeH to be refined!
-  
-  ### fruit revenue----
-  tree_fruit_revenue_Eur <- tree_fruit_quantity_kg * tree_fruit_price_Eur_per_kg
-  
   ## timber----
   # Just if explicit allowance by UNB is given?
   # Harvest of all trees in last year
@@ -217,6 +191,17 @@ orchard_revitalization <- function(){
   
   
   # costs and labor orchard----
+  ## labor----
+  # labor fruit yield
+  labor_fruit_basis_h <- fruit_labor_harvest_basis_h # HeH to be refined!
+  labor_fruit_quanti_dependend_h <- tree_fruit_quantity_kg * fruit_labor_harvest_h_per_kg # HeH to be refined! vv
+  
+  labor_fruit_yield_h <- labor_fruit_basis_h +
+    labor_fruit_quanti_dependend_h
+  
+  # labor tree pruning
+  labor_fruit_pruning_h <- fruit_labor_pruning_h_per_tree * n_trees # HeH to be refined!
+  
   ## supply chain costs----
   costs_mainteance_supply_chain_Eur <- labor_supply_chain_building_h * 
     labor_wage_Eur_per_h_brutto
@@ -225,6 +210,16 @@ orchard_revitalization <- function(){
   costs_establishment_trees[1] <- tree_establishment_costs
   
   ## mainteance costs----
+  # HeH machinery scenario
+  # machinery and labor for yield
+  years_buying_machines <- floor(n_years/10) # HeH every 10 years, new machinery must be bought
+  costs_mainteance_trees_machinery_Eur[seq(10, 
+                                           length(costs_mainteance_trees_machinery_Eur), 
+                                           by = 10)] <- vv(fruit_price_machinery_mean_Eur, 
+                                                           fruit_price_machinery_var_Eur, 
+                                                           n = years_buying_machines)
+  #plot(costs_mainteance_trees_machinery_Eur)
+  
   ### pruning etc
   costs_mainteance_trees_pruning_Eur <- labor_fruit_pruning_h *
     labor_wage_Eur_per_h_brutto
@@ -241,6 +236,12 @@ orchard_revitalization <- function(){
     labor_wage_Eur_per_h_brutto
     
   # orchard_benefits----
+  # subsidies----
+  #tree_subidies <- 
+  
+  ### fruit revenue----
+  tree_fruit_revenue_Eur <- tree_fruit_quantity_kg * tree_fruit_price_Eur_per_kg
+    
   # fruit and timber
   benefits_orchard <- (tree_fruit_revenue_Eur +
                          tree_timber_revenue_Eur) -
@@ -258,6 +259,8 @@ orchard_revitalization <- function(){
   drought_mitigation <- events_drought*tree_vulnerability
   
   #NPV
+  # HeH: different discount rates for agricultural and "usual" products!
+  # Thus, separated NPV calculation?
   NPV_orchard <- discount(benefits_orchard, 
                           discount_rate, 
                           calculate_NPV = TRUE)
@@ -287,6 +290,10 @@ model_runs <- mcSimulation(estimate = as.estimate(estimate_data),
                            model_function = orchard_revitalization,
                            numberOfModelRuns = 100,
                            functionSyntax = "plainNames")
+# save results
+# write.csv(model_runs, "Results/MC_orchard_revitalization_100000.csv")
+# saveRDS(model_runs, "Results/MC_orchard_revitalization_100000.rds")
+
 
 ################################################################################
 # Model results----
@@ -300,11 +307,29 @@ plot_distributions(mcSimulation_object = model_runs,
                    #old_names = c("NPV_orchard", "NPV_hay"),
                    new_names = "Outcome distribution for profits")
 
-## VOI----
+## VOI using PLS----
+pls_result_AF <- plsr.mcSimulation(
+  object = model_runs,
+  resultName = names(model_runs$y)[3],
+  ncomp = 1
+)
 
+# plot VOI
+# with cut_off_line 1 and threshold of 0.5 
+plot_pls(pls_result_AF,
+         input_table = estimate_data,
+         cut_off_line = 1,
+         threshold = 0.5)
 
 ## EVPI----
+# save as dataframe
+df <- data.frame(model_runs$x, model_runs$y[1:3])
 
+# run evpi on the NPVs (the last few in the table, starting with "NPV_decision")
+EVPI <- multi_EVPI(mc = df, first_out_var = "NPV_decision")
+
+# plot the EVPI results for the decision
+plot_evpi(EVPIresults = EVPI, decision_vars = "NPV_decision")
 
 
                    
