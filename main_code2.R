@@ -29,7 +29,7 @@ make_variables(as.estimate(input_data))
 #scenario_joint_machinery <- TRUE
 timespan <- 55
 n_trees <- 15
-discount_rate <- 2
+discount_rate <- 2 # HeH: differentiate between agriculture and else!!
 
 ################################################################################
 
@@ -43,6 +43,8 @@ orchard_revitalization <- function(){
   
   # preparation of empty vectors and lists for calculations
   #late_frost_event<-rep(NA, n_years)
+  tree_dieback_number <- rep(NA, n_years)
+  labor_mainteance_replanting <- rep(0, n_years)
   costs_establishment_trees <- rep(0, n_years)
   costs_mainteance_trees_machinery_Eur <- rep(0, n_years)
   costs_establishment_hay_Eur <- rep(0, n_years)
@@ -85,17 +87,20 @@ orchard_revitalization <- function(){
   
   #plot(events_disease)
   
-  
-  ## unknown-events
-  events_uncert_risks <- chance_event(risk_unknown,
-                                  value_if = (vv(uncert_risk_decrease_mean,
-                                                 var_CV = uncert_risk_decrease_var,
-                                                 n = n_years,
-                                                 lower_limit = 0.1)),
-                                  value_if_not = rep(0, n_years),
-                                  n = n_years)
-  #plot(events_uncert_risks)
+  # 
+  # ## unknown-events
+  # events_uncert_risks <- chance_event(risk_unknown,
+  #                                 value_if = (vv(uncert_risk_decrease_mean,
+  #                                                var_CV = uncert_risk_decrease_var,
+  #                                                n = n_years,
+  #                                                lower_limit = 0.1)),
+  #                                 value_if_not = rep(0, n_years),
+  #                                 n = n_years)
+  # #plot(events_uncert_risks)
 
+  # summarise risks----
+  risk_sum_yield_reductions <- events_drought + events_frost + events_drought
+  
   
   # hay benefit----
   # hay yield
@@ -118,7 +123,8 @@ orchard_revitalization <- function(){
     costs_mainteance_hay_Eur
   
   # orchard----
-  # fruit quality and quantity----
+  
+  ## fruit quality and quantity----
   # max fruit yield
   fruit_yield_max_kg <- gompertz_yield(
     max_harvest = fruit_mean_kg_per_tree * n_trees,
@@ -136,16 +142,35 @@ orchard_revitalization <- function(){
   ## influence of risks---- 
   # tree age influence: assuming it as parameterised quadratic function
   # p1 and p2 are very uncertain -> identify whether they need more detail
-  year <- 1:55
+  year <- 1:timespan
   tree_age_influence <- uncert_tree_parameter_age_2*
     (year - uncert_tree_parameter_age_1)^2
   #plot(tree_age_influence) 
   
   tree_vulnerability <- uncert_tree_vulnerability * tree_age_influence
   
+  # on diebacks & replantings
+  # Note: we need to replant so it will stay an orchard
+  # Heh: urgent - how to say "when it is too much so the tree will die"?!
+  # HeH: idea - take vv function over all trees with risk_chance of sum risks
+  # And include parameter for motivation_influence?
+  for (i in n_trees) {
+    diebacks <- chance_event(risk_sum_yield_reductions[i]*tree_vulnerbaility[i],
+                             value_if = 1,
+                             value_if_not = 0,
+                             n_trees)
+    
+    tree_dieback_number[i] <- sum(diebacks)
+  }
+  
+  labor_mainteance_replanting <- dieback_number_trees*
+    vv(mean_replanting_labor_h, var_cv_replanting_labor_h,
+       1)
+  
+  
   # on quantity
   tree_fruit_quantity_kg <- fruit_yield_max_kg -
-    ((events_drought + events_disease + events_frost + events_uncert_risks) 
+    ((events_drought + events_disease + events_frost) #  + events_uncert_risks) 
      * tree_vulnerability)
   # check for negatives values- become 0!
   tree_fruit_quantity_kg[tree_fruit_quantity_kg < 0] <- 0
@@ -153,7 +178,7 @@ orchard_revitalization <- function(){
   
   # on quality
   tree_fruit_quality_percent <- 1 - 
-    ((events_drought + events_disease + events_uncert_risks) 
+    ((events_drought + events_disease) # + events_uncert_risks) 
      * tree_vulnerability)
 
   ## supply chain investment----
@@ -307,7 +332,7 @@ plot_distributions(mcSimulation_object = model_runs,
                    #old_names = c("NPV_orchard", "NPV_hay"),
                    new_names = "Outcome distribution for profits")
 
-## VOI using PLS----
+## VOI using VIP-PLS----
 pls_result_AF <- plsr.mcSimulation(
   object = model_runs,
   resultName = names(model_runs$y)[3],
@@ -319,7 +344,7 @@ pls_result_AF <- plsr.mcSimulation(
 plot_pls(pls_result_AF,
          input_table = estimate_data,
          cut_off_line = 1,
-         threshold = 0.5)
+         threshold = 0.7)
 
 ## EVPI----
 # save as dataframe
