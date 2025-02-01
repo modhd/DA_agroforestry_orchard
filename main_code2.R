@@ -32,6 +32,7 @@ make_variables(as.estimate(input_data))
 #scenario_joint_machinery <- TRUE
 timespan <- 55
 n_trees <- 15
+field_size_ha <- 1.3
 discount_rate <- 2 # HeH: differentiate between agriculture and else!!
 
 ################################################################################
@@ -147,13 +148,13 @@ orchard_revitalization <- function(){
   )
   #plot(fruit_yield_max_kg)
   
-  ## influence of risks---- 
-  # tree age influence: assuming it as parameterised quadratic function
+  ### influence of risks---- 
+  # tree age influence: assuming it as parameterized quadratic function
   # p1 and p2 are very uncertain -> identify whether they need more detail
   year <- 1:timespan
   tree_age_influence <- (uncert_tree_parameter_age_2*0.0001)*
     (year - uncert_tree_parameter_age_1)^2
-  plot(tree_age_influence)
+  #plot(tree_age_influence)
   
   tree_vulnerability_per_age <- uncert_tree_vulnerability * tree_age_influence
   #plot(tree_vulnerability_per_age)
@@ -165,14 +166,6 @@ orchard_revitalization <- function(){
     ### diebacks----
     # HeH include parameter for motivation_influence?
     # This function gives back a vector with 0 when dieback and 1 if not
-    
-    # tree_deaths_yesno <- sapply(tree_ages[i, ], function(n) {
-    #   age <- tree_ages[i, n] 
-    #   vulnerability <- tree_vulnerability_per_age[age]  
-    #   chance_event(pmin(risk_sum_yield_reductions[i] * vulnerability, 1), # maximum of 1 prevents errors
-    #                value_if = 0, value_if_not = 1)
-    # })
-    i <- 1
     tree_deaths_yesno <- tree_ages[i, ] %>%
       map_dbl(~ {
         age <- .x  # Get tree age
@@ -186,7 +179,6 @@ orchard_revitalization <- function(){
     
     # update tree ages for the given year:
     tree_ages[i+1,] <- tree_ages[i+1,]*tree_deaths_yesno+1
-    
       
     ## tree age influences----
     
@@ -232,9 +224,28 @@ orchard_revitalization <- function(){
         }) %>%
         mean() # HeH mean orrect?
       
-    }
+  }
+  
+  ## replanting costs & subsidies----
+  # HeH if (scenario_subsidies_lost = FALSE)
+  
+  # HALM 2.1
+  # in establishment year
+  tree_subsidies_establishment_y1_Eur <- n_trees *
+    ((tree_subsidies_HALM_2_1_annual_Eur_per_tree * 5) +
+       (tree_subsidies_HALM_2_2_y1_Eur_per_tree) +
+       (tree_subsidies_HALM_2_2_y2_5_Eur_per_tree * 4))
+  
+  # in case of replantings 
+  tree_subidies_diebacks_Eur <- tree_dieback_number *
+    tree_dieback_number *
+    ((tree_subsidies_HALM_2_1_annual_Eur_per_tree * 5) +
+       (tree_subsidies_HALM_2_2_y1_Eur_per_tree) +
+       (tree_subsidies_HALM_2_2_y2_5_Eur_per_tree * 4))
+
+  
     
-  # labor for dieback replantings
+  ## labor for dieback replantings
     labor_mainteance_replanting <- tree_dieback_number*
       vv(fruit_labor_replanting_mean_h, fruit_labor_replanting_var,
          1)
@@ -285,10 +296,7 @@ orchard_revitalization <- function(){
   # labor tree pruning
   labor_fruit_pruning_h <- fruit_labor_pruning_h_per_tree * n_trees # HeH to be refined!
   
-  ## supply chain costs----
-  costs_mainteance_supply_chain_Eur <- labor_supply_chain_building_h * 
-    labor_wage_Eur_per_h_brutto
-  
+
   ## establishment costs----
   costs_establishment_trees[1] <- tree_establishment_costs
   
@@ -298,10 +306,14 @@ orchard_revitalization <- function(){
   years_buying_machines <- floor(n_years/10) # HeH every 10 years, new machinery must be bought
   costs_mainteance_trees_machinery_Eur[seq(10, 
                                            length(costs_mainteance_trees_machinery_Eur), 
-                                           by = 10)] <- vv(fruit_price_machinery_mean_Eur, 
+                                           by = 10)] <- vv(fruit_price_machinery_mean_Eur/10, 
                                                            fruit_price_machinery_var_Eur, 
                                                            n = years_buying_machines)
   #plot(costs_mainteance_trees_machinery_Eur)
+  
+  ## supply chain costs
+  costs_mainteance_supply_chain_Eur <- labor_supply_chain_building_h * 
+    labor_wage_Eur_per_h_brutto
   
   ### pruning etc
   costs_mainteance_replanting_Eur <- labor_mainteance_replanting *
@@ -322,10 +334,17 @@ orchard_revitalization <- function(){
     labor_wage_Eur_per_h_brutto
     
   # orchard_benefits----
-  # subsidies----
-  #tree_subidies <- 
+  ## subsidies----
+  tree_subidies_gloetz_Eur <- (tree_subsidies_GLOETZ_annual_Eur_per_ha *
+                          field_size_ha * n_years) 
   
-  ### fruit revenue----
+  tree_subidies_total_Eur <- tree_subidies_gloetz_Eur +
+    tree_subsidies_establishment_y1_Eur +
+    tree_subidies_diebacks_Eur #+
+    
+
+  
+  ## fruit revenue----
   tree_fruit_revenue_Eur <- tree_fruit_quantity_kg * tree_fruit_price_Eur_per_kg
     
   # fruit and timber
@@ -335,14 +354,14 @@ orchard_revitalization <- function(){
                          costs_establishment_trees)
     
   
-  ### yield reliability----
+  ## yield reliability----
   #tree_fruit_reliability <- var(tree_fruit_revenue_Eur)/tree_fruit_revenue_Eur
   #plot(tree_fruit_reliability)
   
   # outcomes----
   ## drought mitigation
   ## HeH: ???? not sure how to implement that!
-  drought_mitigation <- events_drought*tree_vulnerability
+  drought_mitigation <- events_drought*tree_vulnerability_per_age
   
   #NPV
   # HeH: different discount rates for agricultural and "usual" products!
@@ -366,7 +385,10 @@ orchard_revitalization <- function(){
   
   return(list(NPV_hay = NPV_hay,
               NPV_orchard = NPV_orchard,
-              NPV_decision = NPV_decision))
+              NPV_decision = NPV_decision,
+              #labor_benefit_ratio = labor_benefit_ratio,
+              diebacks_mean_per_year = mean(tree_dieback_number)
+              ))
   
 }
 
@@ -393,7 +415,16 @@ plot_distributions(mcSimulation_object = model_runs,
                    #old_names = c("NPV_orchard", "NPV_hay"),
                    new_names = "Outcome distribution for profits")
 
-## VOI using VIP-PLS----
+plot_distributions(mcSimulation_object = model_runs,
+                   "hist_simple_overlay",
+                   vars = c("diebacks"),
+                   #method = "smooth_simple_overlay",
+                   #method = "boxplot_density",
+                   #old_names = c("NPV_orchard", "NPV_hay"),
+                   new_names = "Simulated diebacks")
+
+
+## SA using VIP-PLS----
 pls_result_AF <- plsr.mcSimulation(
   object = model_runs,
   resultName = names(model_runs$y)[3],
@@ -405,9 +436,9 @@ pls_result_AF <- plsr.mcSimulation(
 plot_pls(pls_result_AF,
          input_table = estimate_data,
          cut_off_line = 1,
-         threshold = 0.7)
+         threshold = 0.3)
 
-## EVPI----
+## VOI using EVPI----
 # save as dataframe
 df <- data.frame(model_runs$x, model_runs$y[1:3])
 
