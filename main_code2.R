@@ -4,24 +4,27 @@ library(decisionSupport)
 library(tidyverse)
 library(readxl)
 
-# Model development utilities ----
+
+# Read input tables----
+input_uncertainities <- read_excel("Data/uncertain_variables.xlsx") 
+input_data <- read_excel("data/data_estimates.xlsx") # bio-physical & economic data
+estimate_data <- rbind(input_uncertainities, input_data)
+# Frame_input <- read.csv() # political scenario probabilities
+
+
+# Model development utilities
 ## "make variables" function
 # gives point estimates (for code testing)
-# takes table, takes random point sample based on given distribution
-# form Whitney et al. (Lecture material DA)
+# from Whitney et al. (Lecture material DA)
 make_variables <- function(est,n=1)
 { x<-random(rho=est, n=n)
 for(i in colnames(x)) assign(i,
                              as.numeric(x[1,i]),envir=.GlobalEnv)
 }
 
-## read input tables
-input_uncertainities <- read_excel("Data/uncertain_variables.xlsx") 
-input_data <- read_excel("data/data_estimates.xlsx") # bio-physical & economic data
-estimate_data <- rbind(input_uncertainities, input_data)
-# Frame_input <- read.csv() # political scenario probabilities
 make_variables(as.estimate(input_uncertainities))
 make_variables(as.estimate(input_data))
+
 
 # Scenario input
 # HeH interactive input?
@@ -43,13 +46,19 @@ orchard_revitalization <- function(){
   
   # preparation of empty vectors and lists for calculations
   #late_frost_event<-rep(NA, n_years)
-  tree_dieback_number <- rep(NA, n_years)
-  labor_mainteance_replanting <- rep(0, n_years)
+  tree_dieback_number <- rep(0, n_years)
+  tree_death_yesno <- rep(NA, n_trees)
+  fruit_yield_max_kg <- rep(0, n_years)
+  tree_fruit_quantity_kg <- rep(NA, n_years)
+  tree_fruit_quality_percent <- rep(NA, n_years)
   costs_establishment_trees <- rep(0, n_years)
   costs_mainteance_trees_machinery_Eur <- rep(0, n_years)
   costs_establishment_hay_Eur <- rep(0, n_years)
   walnut_price <- rep(0, n_years)
-
+  
+  tree_ages <- data.frame(matrix(0, nrow = n_years, ncol = n_trees)) %>%
+    set_names(paste0("tree", 1:n_trees)) %>%
+    mutate(across(everything(), ~ replace(., row_number() == 1, 8))) # first row (year): all to 1
   
   # risk occurences----
   ## drought
@@ -106,7 +115,7 @@ orchard_revitalization <- function(){
   # hay yield
   # HeH: discuss - too humid also bad, but that would not affect trees so leave it out
   hay_yield_t_max <- vv(hay_mean_t, hay_var_t, n_years)
-  hay_yield_t <- hay_yield_t_max*events_drought*events_uncert_risks
+  hay_yield_t <- hay_yield_t_max*events_drought # *events_uncert_risks
   hay_yield_revenue_Eur <- 2*hay_yield_t*(vv(hay_price_mean_Eur_t, 
                                              hay_price_var_Eur_t, 
                                              n_years)) # 2 yields per year, HeH discuss: yield dependent
@@ -125,9 +134,9 @@ orchard_revitalization <- function(){
   # orchard----
   
   ## fruit quality and quantity----
-  # max fruit yield
-  fruit_yield_max_kg <- gompertz_yield(
-    max_harvest = fruit_mean_kg_per_tree * n_trees,
+  # maximum yield dependent on tree ages in all years
+  fruit_yield_per_age <- gompertz_yield(
+    max_harvest = fruit_mean_kg_per_tree,
     time_to_first_yield_estimate = fruit_time_to_first_yield_est,
     time_to_second_yield_estimate = fruit_time_to_first_yield_est+1,
     first_yield_estimate_percent = fruit_first_yield_percent,
@@ -136,64 +145,113 @@ orchard_revitalization <- function(){
     var_CV = fruit_yield_var_per_tree,
     no_yield_before_first_estimate = TRUE
   )
-  
   #plot(fruit_yield_max_kg)
   
   ## influence of risks---- 
   # tree age influence: assuming it as parameterised quadratic function
   # p1 and p2 are very uncertain -> identify whether they need more detail
   year <- 1:timespan
-  tree_age_influence <- uncert_tree_parameter_age_2*
+  tree_age_influence <- (uncert_tree_parameter_age_2*0.0001)*
     (year - uncert_tree_parameter_age_1)^2
-  #plot(tree_age_influence) 
+  plot(tree_age_influence)
   
-  tree_vulnerability <- uncert_tree_vulnerability * tree_age_influence
+  tree_vulnerability_per_age <- uncert_tree_vulnerability * tree_age_influence
+  #plot(tree_vulnerability_per_age)
   
-  # on diebacks & replantings
-  # Note: we need to replant so it will stay an orchard
-  # Heh: urgent - how to say "when it is too much so the tree will die"?!
-  # HeH: idea - take vv function over all trees with risk_chance of sum risks
-  # And include parameter for motivation_influence?
-  for (i in n_trees) {
-    diebacks <- chance_event(risk_sum_yield_reductions[i]*tree_vulnerbaility[i],
-                             value_if = 1,
-                             value_if_not = 0,
-                             n_trees)
+  
+  ## yearly loops----
+  for (i in 1:n_years) {
     
-    tree_dieback_number[i] <- sum(diebacks)
-  }
+    ### diebacks----
+    # HeH include parameter for motivation_influence?
+    # This function gives back a vector with 0 when dieback and 1 if not
+    
+    # tree_deaths_yesno <- sapply(tree_ages[i, ], function(n) {
+    #   age <- tree_ages[i, n] 
+    #   vulnerability <- tree_vulnerability_per_age[age]  
+    #   chance_event(pmin(risk_sum_yield_reductions[i] * vulnerability, 1), # maximum of 1 prevents errors
+    #                value_if = 0, value_if_not = 1)
+    # })
+    i <- 1
+    tree_deaths_yesno <- tree_ages[i, ] %>%
+      map_dbl(~ {
+        age <- .x  # Get tree age
+        vulnerability <- tree_vulnerability_per_age[age]  # Lookup for the age in tree_ages[i, n]
+        chance_event(pmin(risk_sum_yield_reductions[i] * vulnerability, 1), # pmin to prevent errors
+                     value_if = 0, value_if_not = 1)  # Apply chance_event
+      })
+    
+    # store dieback numbers for output
+    tree_dieback_number[i] <- sum(tree_deaths_yesno)
+    
+    # update tree ages for the given year:
+    tree_ages[i+1,] <- tree_ages[i+1,]*tree_deaths_yesno+1
+    
+      
+    ## tree age influences----
+    
+    # sum of maximum of yield within that year dependent on the tree ages
+    fruit_yield_max_kg[i] <- tree_ages[i, ] %>%
+      unlist() %>%
+      map_dbl(~ fruit_yield_per_age[.x]) %>%
+      sum()
+    
+    # # on quantity
+    # tree_fruit_quantity_kg <- fruit_yield_max_kg -
+    #   ((events_drought + events_disease + events_frost) #  + events_uncert_risks) 
+    #    * tree_vulnerability_per_age)
+    # # check for negatives values- become 0!
+    # tree_fruit_quantity_kg[tree_fruit_quantity_kg < 0] <- 0
+    # #plot(tree_fruit_quantity_kg)
+    
+    tree_fruit_quantity_kg[i] <- tree_ages[i, ] %>%
+      unlist() %>%
+      map_dbl(~ {
+        tree_vulnerability <- tree_vulnerability_per_age[.x]  # Extract vulnerability
+        risks <- events_drought[i] + events_disease[i] + events_frost[i]  # Sum risks
+        
+        # Calculate adjusted yield so it os not negative
+        pmax(0, fruit_yield_max_kg[i] - (risks * tree_vulnerability)) 
+        
+      }) %>%
+      sum()
+    
+      # on quality
+      # tree_fruit_quality_percent[i] <- 1 - 
+      #   ((events_drought + events_disease) # + events_uncert_risks) 
+      #    * tree_vulnerability)
+      # 
+      tree_fruit_quality_percent[i] <- tree_ages[i, ] %>%
+        unlist() %>%
+        map_dbl(~ {
+          tree_vulnerability <- tree_vulnerability_per_age[.x]  # Extract vulnerability
+          risk_factor <- events_drought[i] + events_disease[i]  # Sum risk events
+          
+          # Ensure the value does not go below 0
+          pmax(0, 1 - (risk_factor * tree_vulnerability))
+        }) %>%
+        mean() # HeH mean orrect?
+      
+    }
+    
+  # labor for dieback replantings
+    labor_mainteance_replanting <- tree_dieback_number*
+      vv(fruit_labor_replanting_mean_h, fruit_labor_replanting_var,
+         1)
+    
   
-  labor_mainteance_replanting <- dieback_number_trees*
-    vv(mean_replanting_labor_h, var_cv_replanting_labor_h,
-       1)
-  
-  
-  # on quantity
-  tree_fruit_quantity_kg <- fruit_yield_max_kg -
-    ((events_drought + events_disease + events_frost) #  + events_uncert_risks) 
-     * tree_vulnerability)
-  # check for negatives values- become 0!
-  tree_fruit_quantity_kg[tree_fruit_quantity_kg < 0] <- 0
-  #plot(tree_fruit_quantity_kg)
-  
-  # on quality
-  tree_fruit_quality_percent <- 1 - 
-    ((events_drought + events_disease) # + events_uncert_risks) 
-     * tree_vulnerability)
-
   ## supply chain investment----
   labor_supply_chain_building_h <- vv(supply_chain_invest_mean_h,
-                                       supply_chain_invest_mean_h, n_years)
+                                       supply_chain_invest_var, n_years)
   
   ## fruit selling----
   ## walnut price (optional! HeH may keep out?)
-  for (i in 1:n_years) {
     if (tree_fruit_quantity_kg[i] < uncert_wholesail_threshhold_t) {
         walnut_price[i] <- walnut_price_direct_Eur_per_kg
       } else {
        walnut_price[i] <- walnut_price_wholesale_Eur_per_kg
       }
-  }
+  
   #plot(walnut_price)
   
   ## walnut price
@@ -246,6 +304,9 @@ orchard_revitalization <- function(){
   #plot(costs_mainteance_trees_machinery_Eur)
   
   ### pruning etc
+  costs_mainteance_replanting_Eur <- labor_mainteance_replanting *
+    labor_wage_Eur_per_h_brutto
+  
   costs_mainteance_trees_pruning_Eur <- labor_fruit_pruning_h *
     labor_wage_Eur_per_h_brutto
   
