@@ -64,6 +64,7 @@ orchard_revitalization <- function(){
   # preparation of empty vectors and lists for calculations
   # NAs whether the vector is filled (as control if each function runs)
   costs_establishment_hay_Eur <- rep(0, n_years)
+  labor_fruit_establishment_h <- rep(0, n_years)
   trees_dieback_number <- rep(0, n_years)
   trees_fruit_quantity_kg <- rep(NA, n_years)
   trees_fruit_quality_median_percent <- rep(NA, n_years)
@@ -373,7 +374,7 @@ orchard_revitalization <- function(){
       trees_fruit_reliability_percent[i] <- ifelse(
         trees_fruit_revenue_Eur[i] > 0,
         100-(100*sd(fruit_yield_per_age[1:i] - trees_fruit_quantity_kg[1:i], na.rm = TRUE)
-             )/mean(trees_fruit_revenue_Eur),
+             )/mean(trees_fruit_revenue_Eur[1:i]),
                  0)
   }
   
@@ -475,9 +476,16 @@ orchard_revitalization <- function(){
   
 
   ## Establishment costs----
+  # Heh todo: refine!
+  # material costs
   costs_establishment_trees_Eur[1] <- ifelse(investment_subsidy_scenario, # if inv sub
-                                             tree_establishment_costs*0.1, # 10% est costs only
+                                             tree_establishment_costs*0.1, # 10% est costs only Heh discuss
                                              tree_establishment_costs) # if not, costs
+  labor_fruit_establishment_h[1] <- sum(
+    vv(fruit_labor_replanting_mean_h,
+       tree_labor_establishment_var_h_per_tree,
+       n_trees))
+    
                                              
   
   ## Mainteance costs----
@@ -515,6 +523,14 @@ orchard_revitalization <- function(){
   costs_timber_harvest_Eur[timespan] <- trees_timber_labor_harvest_h[timespan] * 
     labor_wage_Eur_per_h_brutto
 
+  ### total labor
+  labor_trees_total_h <- labor_fruit_establishment_h +
+    labor_supply_chain_building_h +
+    labor_mainteance_replanting +
+    labor_fruit_pruning_h +
+    labor_fruit_harvest_h +
+    trees_timber_labor_harvest_h
+    
   ## Total costs----
   costs_mainteance_trees_total_Eur <- costs_mainteance_trees_machinery_Eur +
     costs_mainteance_supply_chain_Eur +
@@ -578,10 +594,12 @@ orchard_revitalization <- function(){
               NPV_orchard = NPV_orchard,
               NPV_decision = NPV_decision,
               #labor_benefit_ratio = labor_benefit_ratio,
-              diebacks_mean_per_year = mean(trees_dieback_number),
+              diebacks_per_year = trees_dieback_number,
               drought_mitigation = drought_mitigation,
               walnut_revenue_Eur = trees_fruit_revenue_Eur,
               walnut_yields_kg = trees_fruit_quantity_kg,
+              walnut_price_Eur = tree_fruit_price_Eur_per_kg,
+              labor_h = labor_trees_total_h,
               yield_reliability_percent = trees_fruit_reliability_percent
               ))
   
@@ -591,7 +609,7 @@ orchard_revitalization <- function(){
 # Model run----
 model_runs <- mcSimulation(estimate = as.estimate(estimate_data),
                            model_function = orchard_revitalization,
-                           numberOfModelRuns = 100,
+                           numberOfModelRuns = 1000,
                            functionSyntax = "plainNames")
 # save results
 # write.csv(model_runs, "Results/MC_orchard_revitalization_100000.csv")
@@ -618,8 +636,101 @@ plot_distributions(mcSimulation_object = model_runs,
 
 
 
-# Distributions of state vars----
+## State vars----
+### Yeld quantity----
+plot_yields <- plot_cashflow(model_runs,
+              cashflow_var_name = "walnut_yields_kg",
+              x_axis_name = "Timeline of intervention",
+              y_axis_name = "Yield [kg]",
+              legend_name = "Quantiles (%)",
+              legend_labels = c("5 to 95", "25 to 75", "median"),
+              color_25_75 = "grey75",
+              color_5_95 = "grey90",
+              color_median = "blue",
+              facet_labels = "walnut_yields_kg"
+              ) +
+  labs(title = "Annual walnut yields",
+       subtitle = paste(
+         "Scenarios: Invest subsidy ", investment_subsidy_scenario,
+         ", ",
+         "Joint machinery ", scenario_joint_machinery
+       ))
+plot_yields
 
+### Walnut revenue----
+plot_walnut_revenue <- plot_cashflow(model_runs,
+                                         cashflow_var_name = "walnut_revenue_Eur",
+                                         x_axis_name = "Timeline of intervention",
+                                         y_axis_name = "Revenue [€]",
+                                         legend_name = "Quantiles (%)",
+                                         legend_labels = c("5 to 95", "25 to 75", "median"),
+                                         color_25_75 = "grey75",
+                                         color_5_95 = "grey90",
+                                         color_median = "blue",
+                                         facet_labels = "walnut_revenue_Eur") +
+              labs(title = "Annual revenue by walnut fruit sellings",
+                   subtitle = paste(
+                     "Scenarios: Invest subsidy ", investment_subsidy_scenario,
+                     ", ",
+                     "Joint machinery ", scenario_joint_machinery))
+
+plot_walnut_revenue
+
+### Diebacks----
+plot_diebacks <- plot_cashflow(model_runs,
+                                     cashflow_var_name = "diebacks_per_year",
+                                     x_axis_name = "Timeline of intervention",
+                                     y_axis_name = "Number of trees",
+                                     legend_name = "Quantiles (%)",
+                                     legend_labels = c("5 to 95", "25 to 75", "median"),
+                                     color_25_75 = "grey75",
+                                     color_5_95 = "grey90",
+                                     color_median = "blue",
+                                     facet_labels = "diebacks_per_year") +
+  labs(title = "Annual number of dead walnut trees",
+       subtitle = paste(
+         "Scenarios: Invest subsidy ", investment_subsidy_scenario,
+         ", ",
+         "Joint machinery ", scenario_joint_machinery))
+plot_diebacks
+
+### Labor hours----
+plot_labor_h <- plot_cashflow(model_runs,
+                               cashflow_var_name = "labor_h",
+                               x_axis_name = "Timeline of intervention",
+                               y_axis_name = "Working hours [h]",
+                               legend_name = "Quantiles (%)",
+                               legend_labels = c("5 to 95", "25 to 75", "median"),
+                               color_25_75 = "grey75",
+                               color_5_95 = "grey90",
+                               color_median = "blue",
+                               facet_labels = "labor_h") +
+  labs(title = "Annual number of working hours for trees",
+       subtitle = paste(
+         "Scenarios: Invest subsidy ", investment_subsidy_scenario,
+         ", ",
+         "Joint machinery ", scenario_joint_machinery))
+plot_labor_h
+
+### drought mitigation----
+plot_drought_mitigation <- plot_cashflow(model_runs,
+                             cashflow_var_name = "drought_mitigation",
+                             x_axis_name = "Timeline of intervention",
+                             y_axis_name = "Surplus income by trees in drought years [€]",
+                             legend_name = "Quantiles (%)",
+                             legend_labels = c("5 to 95", "25 to 75", "median"),
+                             color_25_75 = "grey75",
+                             color_5_95 = "grey90",
+                             color_median = "blue",
+                             facet_labels = "drought_mitigation"
+) +
+  labs(title = "Financial drought risk mitigation",
+       subtitle = paste(
+         "Scenarios: Invest subsidy ", investment_subsidy_scenario,
+         ", ",
+         "Joint machinery ", scenario_joint_machinery
+       ))
+plot_drought_mitigation
 
 
 ## SA using VIP-PLS----
