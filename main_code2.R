@@ -18,10 +18,10 @@ library(readxl)
 # (3) data_estimates: variables that are guess really (or "parameters")
 input_uncertainities <- read_excel("Data/uncertain_variables.xlsx", na = "NA")  # HeH: switch from xlsx to csv
 input_data <- read_excel("data/data_estimates.xlsx", na = "NA") # bio-physical 
-# input_data_agency <- read_excel("data/data_agency.xlsx", na = "NA") # bio-physical 
+input_data_agency <- read_excel("data/data_agency.xlsx", na = "NA") # bio-physical 
 
-#estimate_data <- rbind(input_uncertainities, input_data_agency, input_data)
-estimate_data <- rbind(input_uncertainities, input_data)
+estimate_data <- rbind(input_uncertainities, input_data_agency, input_data)
+#estimate_data <- rbind(input_uncertainities, input_data)
 
 ## Model programming utilities----
 ## "make variables" function to create point estimates as global variable
@@ -34,9 +34,9 @@ for(i in colnames(x)) assign(i,
 }
 
 # create global vars for programming process
-make_variables(as.estimate(input_uncertainities))
-make_variables(as.estimate(input_data))
-#make_variables(as.estimate(estimate_data)) # bound data
+#make_variables(as.estimate(input_uncertainities))
+#make_variables(as.estimate(input_data))
+make_variables(as.estimate(estimate_data)) # bound data
 
 
 # Scenario input
@@ -45,9 +45,9 @@ make_variables(as.estimate(input_data))
 # also idea that 90 % abgängig -> replanting with waltnus up to 30 % ?! 
 # preserved habitat: at least 100 trees)
 timespan <- 55
-n_trees <- 15 
+n_trees <- 114
 field_size_ha <- 1.3
-discount_rate <- 2 # HeH: differentiate between agriculture and else!!
+#discount_rate <- 1.05 # HeH discuss: differentiate between agriculture and else!!
 scenario_joint_machinery <- FALSE
 machinery_joint_participants <- 10
 investment_subsidy_scenario <- TRUE #HeH investment
@@ -476,21 +476,32 @@ orchard_revitalization <- function(){
   
 
   ## Establishment costs----
-  # Heh todo: refine!
-  # material costs
-  costs_establishment_trees_Eur[1] <- ifelse(investment_subsidy_scenario, # if inv sub
-                                             tree_establishment_costs*0.1, # 10% est costs only Heh discuss
-                                             tree_establishment_costs) # if not, costs
+  # Heh discuss: no vv as would be now and therefore clear prices
+  # material costs 
+  costs_establishment_material <- tree_establishment_material_costs_per_tree *
+                                       n_trees
+  
+  # labor: high because digging the hole might take longer (due to roots of cherry trees)
   labor_fruit_establishment_h[1] <- sum(
-    vv(fruit_labor_replanting_mean_h,
-       tree_labor_establishment_var_h_per_tree,
+    vv(fruit_labor_establishment_mean_h_per_tree,
+       fruit_labor_establishment_var_per_tree,
        n_trees))
-    
-                                             
+  
+  costs_establishment_labor <- labor_fruit_establishment_h[1] *
+                                           labor_wage_Eur_per_h_brutto
+  
+  # total: material and labor; might be reduced by subsidy
+  costs_establishment_trees_Eur[1] <- ifelse(investment_subsidy_scenario, # if inv. sub.
+                                             (costs_establishment_material + 
+                                              costs_establishment_labor) * 
+                                              0.1, # only to pay 10 % - HeH: discuss
+                                             (costs_establishment_material + 
+                                                costs_establishment_labor))#if not: whole
+            
   
   ## Mainteance costs----
   # machinery scenario
-  # machinery price depenent on scenaerio
+  # machinery price dependet on scenario
   machinery_price <- ifelse(machinery_scenario == TRUE,
                             fruit_price_machinery_mean_Eur/machinery_joint_participants,
                             fruit_price_machinery_mean_Eur)
@@ -502,6 +513,17 @@ orchard_revitalization <- function(){
                                                            n = years_buying_machines)
   # plot(costs_mainteance_trees_machinery_Eur)
   
+  ## organic certificate
+  costs_mainteance_certificate_Eur <- rep(tree_mainteance_costs_certificate,
+                                          n_years)
+  
+  ## fertiliser (lime, compost, else)
+  ## HeH discuss: not tree specific?
+  costs_mainteance_fertiliser_Eur <- n_trees * 
+    vv(tree_mainteance_costs_fertiliser_mean_per_tree,
+       tree_mainteance_costs_fertiliser_var,
+       n_years)
+                                        
   ## supply chain costs
   costs_mainteance_supply_chain_Eur <- labor_supply_chain_building_h *
     labor_wage_Eur_per_h_brutto
@@ -525,6 +547,7 @@ orchard_revitalization <- function(){
 
   ### total labor
   labor_trees_total_h <- labor_fruit_establishment_h +
+    labor_fruit_establishment_h + 
     labor_supply_chain_building_h +
     labor_mainteance_replanting +
     labor_fruit_pruning_h +
@@ -533,6 +556,8 @@ orchard_revitalization <- function(){
     
   ## Total costs----
   costs_mainteance_trees_total_Eur <- costs_mainteance_trees_machinery_Eur +
+    costs_mainteance_certificate_Eur
+    costs_mainteance_fertiliser_Eur +
     costs_mainteance_supply_chain_Eur +
     costs_mainteance_replanting_Eur +
     costs_mainteance_trees_pruning_Eur +
