@@ -65,6 +65,7 @@ orchard_revitalization <- function(){
   # NAs whether the vector is filled (as control if each function runs)
   costs_establishment_hay_Eur <- rep(0, n_years)
   labor_fruit_establishment_h <- rep(0, n_years)
+  labor_fruit_mainteance_h <- rep(NA, n_years)
   trees_dieback_number <- rep(0, n_years)
   trees_fruit_quantity_kg <- rep(NA, n_years)
   trees_fruit_quality_median_percent <- rep(NA, n_years)
@@ -337,6 +338,48 @@ orchard_revitalization <- function(){
         }) %>%
        median() # HeH urgent: mean correct or median?
       
+      ## Mainteance----
+      
+      # check for age stage 
+      # planting: hours are calculated later (mor efficient)
+      labor_fruit_mainteance_h[i] <- trees_ages[i, ] %>%
+        unlist() %>%
+        map_dbl(~ {
+          age <- .x
+          
+          # if juvenile: 
+          if (age <= 5) {
+            # pruning + management (check for diseases, clearance of)
+            labor_fruit_pruning_juvenile_h + 
+              labor_fruit_management_juvenile_h
+            
+          } else if (age <= 12) {
+            # if expanding:
+            # pruning + management + harvest
+            labor_fruit_pruning_expanding_h + 
+              labor_fruit_management_expanding_h + 
+              labor_fruit_harvest_expanding_h
+            
+          } else if (age > 12) {
+            # if mature or older: 
+            # pruning (every 3 years) + management + harvest
+            labor_fruit_harvest_mature_h + 
+              labor_fruit_management_mature_h  
+              ifelse(i %% 4 == 0) # every 4 years (dividable by 4)
+              labor_fruit_pruning_mature_h,
+              0 # else no pruning required
+              ) +
+          }
+
+        }) %>%
+        sum()
+
+      # if mature or older: 
+          # pruning (every 3 years) + maint + harvest
+      
+      costs_mainteance_trees_pruning_Eur <- labor_mainteance_h *
+        labor_wage_Eur_per_h_brutto
+      
       ## Walnut price (supply chain) ----
       ## Idea:
       ## If too much to sell by themselves or quali too bad: wholesale 
@@ -443,17 +486,33 @@ orchard_revitalization <- function(){
                               rounds = 4)
   
   # plot(trees_subsidies_dieback_Eur)
+  
+  ## mainteance labor from replantings: 
+  # material costs 
+  costs_replanting_material <- tree_establishment_material_costs_per_tree *
+    trees_dieback_number
+  
+  # labor: less than in establishment, depends on number of tree that died back
+  labor_fruit_replanting_h <- vv(fruit_labor_establishment_mean_h_per_tree,
+                                 fruit_labor_establishment_var_per_tree,
+                                 n_years) * trees_dieback_number
+  
+
+  costs_replanting_labor <- labor_fruit_replanting_h *
+    labor_wage_Eur_per_h_brutto
+  
+  # total costs: material and labor; depends on invest. subsidy scenario
+  costs_replanting_trees_Eur <- ifelse(investment_subsidy_scenario, # if inv. sub.
+                                       (costs_replanting_material + 
+                                          costs_replanting_labor) * 
+                                         0.1, # only to pay 10 % - HeH: discuss
+                                       (costs_replanting_material + 
+                                          costs_replanting_labor))#if not: whole
  
   
-  ## labor for dieback plot replantings
-    labor_mainteance_replanting <- trees_dieback_number*
-      vv(fruit_labor_replanting_mean_h, fruit_labor_replanting_var,
-         1)
-
-      
   ## Timber----
   # Just if explicit allowance by UNB is given?
-  # Harvest in last year: only trees of declining yield (> 50)
+  # Harvest in last year: only trees of declining yield (> 50) are harvested
   aged_trees <- sum(trees_ages[timespan, ] > 50, na.rm = TRUE) # number of old trees
   tree_timber_t <- sum(vv(timber_mean_t_per_tree, 
                                 timber_var_t_per_tree, aged_trees)) # per tree
@@ -463,18 +522,7 @@ orchard_revitalization <- function(){
   
   
   # Costs and labor orchard----
-  ## Labor----
-  # labor fruit yield
-  labor_fruit_basis_h <- fruit_labor_harvest_basis_h # HeH to be refined!
-  labor_fruit_quanti_dependend_h <- trees_fruit_quantity_kg * fruit_labor_harvest_h_per_kg # HeH to be refined! vv
   
-  labor_fruit_harvest_h <- labor_fruit_basis_h +
-    labor_fruit_quanti_dependend_h
-  
-  # labor tree pruning
-  labor_fruit_pruning_h <- vv(fruit_labor_pruning_h_per_tree*n_trees, 0.8, n_years) # HeH to be refined!
-  
-
   ## Establishment costs----
   # Heh discuss: no vv as would be now and therefore clear prices
   # material costs 
@@ -482,6 +530,7 @@ orchard_revitalization <- function(){
                                        n_trees
   
   # labor: high because digging the hole might take longer (due to roots of cherry trees)
+  # discuss: this with vv
   labor_fruit_establishment_h[1] <- sum(
     vv(fruit_labor_establishment_mean_h_per_tree,
        fruit_labor_establishment_var_per_tree,
@@ -497,10 +546,15 @@ orchard_revitalization <- function(){
                                               0.1, # only to pay 10 % - HeH: discuss
                                              (costs_establishment_material + 
                                                 costs_establishment_labor))#if not: whole
-            
+  
   
   ## Mainteance costs----
-  # machinery scenario
+  ## mainteance labor from loop: labor_fruit_mainteance_h
+  costs_mainteance_trees_Eur <- labor_fruit_mainteance_h * 
+                                    labor_wage_Eur_per_h_brutto
+  
+  
+  ## machinery scenario
   # machinery price dependet on scenario
   machinery_price <- ifelse(machinery_scenario == TRUE,
                             fruit_price_machinery_mean_Eur/machinery_joint_participants,
@@ -528,39 +582,25 @@ orchard_revitalization <- function(){
   costs_mainteance_supply_chain_Eur <- labor_supply_chain_building_h *
     labor_wage_Eur_per_h_brutto
   
-  ### replanting
-  costs_mainteance_replanting_Eur <- labor_mainteance_replanting *
-    labor_wage_Eur_per_h_brutto
-  
-  ### pruning
-  # HeH urgent - to be refined
-  costs_mainteance_trees_pruning_Eur <- labor_fruit_pruning_h *
-    labor_wage_Eur_per_h_brutto
-  
-  ### fruit harvest
-  costs_mainteance_trees_harvest_Eur <- labor_fruit_harvest_h *
-    labor_wage_Eur_per_h_brutto
-  
   ### timber harvest
   costs_timber_harvest_Eur[timespan] <- trees_timber_labor_harvest_h[timespan] * 
     labor_wage_Eur_per_h_brutto
 
   ### total labor
   labor_trees_total_h <- labor_fruit_establishment_h +
-    labor_fruit_establishment_h + 
+    labor_fruit_replanting_h + 
+    labor_fruit_mainteance_h +
     labor_supply_chain_building_h +
-    labor_mainteance_replanting +
-    labor_fruit_pruning_h +
-    labor_fruit_harvest_h +
     trees_timber_labor_harvest_h
     
   ## Total costs----
-  costs_mainteance_trees_total_Eur <- costs_mainteance_trees_machinery_Eur +
+  costs_mainteance_trees_total_Eur <- costs_establishment_trees_Eur +
+    costs_replanting_trees_Eur +
+    costs_mainteance_trees_Eur +
+    costs_mainteance_trees_machinery_Eur +
+    costs_mainteance_supply_chain_Eur +
     costs_mainteance_certificate_Eur
     costs_mainteance_fertiliser_Eur +
-    costs_mainteance_supply_chain_Eur +
-    costs_mainteance_replanting_Eur +
-    costs_mainteance_trees_pruning_Eur +
     costs_timber_harvest_Eur 
   
   # plot(costs_mainteance_trees_total_Eur)
