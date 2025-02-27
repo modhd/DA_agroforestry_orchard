@@ -1,48 +1,44 @@
 # holistic_agroforestry_farm_model
 
+This model explores an [Decision Analysis Approach](https://doi.org/10.1186/s43170-023-00151-9) for agricultural interventions. 
+It represents a farmer's decision to revitalize their orchard meadows by planting walnut trees where former trees have died, to preserve the habitat character and generate additional economic income.
+
 ## Description
-The decision can be vizualized as follows:
+The decision has environmental aspects (i.e. risks by diseases, droughts, or spring frosts; tree-age specific vulnerability for those risks), economical (labor efforts, machinery prices, supply chain scenarios), and political aspects (subsidies, scneario for an investition subsidy and shared machinery investement scenario). 
+
+
 ![decision model](
 4_second_conc_model_refined.jpg "Interim decision model")
 
-The interim reulting conceptual model:
+
+The model's logic is identified in the conceptual model. 
+
+
 ![conceptual model](2_influencing_factors.png "Interim conceptual model")
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+
+
+## Usage
+
+By usuage of the [decisionSupport](https://cran.r-project.org/web/packages/decisionSupport/index.html) package, the decision is implemented in `main_code3.r`:
+* The logical model is implemented as `orchard_revitalization` code function.
+* Posterior distributions are simulated using Marcov Chain Monte Carlo Simulations with the `mcSimulation` function, with `n=100000` model runs.
+Knowledge gaps are identified by Expected Value of Perfect Information analysis `multi_EVPI`. For sensitivity analyses by Variable Influence Projecten based on Partial Lest Square regression (VIP-PLS), the `plsr.mcSimulation` function is used.
+
+The required data input are 3 data tables stored in the Data folder (`data_agency.xlsx`, `data_estimates.xlsx`, and `data_variables.xlsx`) where variable names and their prior distributions are stored.
+
+Output graphs can be stored as `svg` files. Examples are found in the `Output` folder. 
+
+Further packages are requires: `tidyverse`, `readxl`, `svglite`.
 
 ## Archive
 Interim Approaches have been stored in "Archive" and were branched. 
 
-__suggestions for final read me__
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Author and Acknowledge
+Heidi Hoffmann, heidi.hoffmann@stud.uni-goettingen.de
+For the Module "Project Ecosystem ANalysis and Modelling", submission 14th March 2025.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+Many Thanks to Cory WHitney (Uni Bonn) for his great support and advise!
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
 
 ## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Closed.
