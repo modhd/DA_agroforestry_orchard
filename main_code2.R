@@ -18,12 +18,15 @@ library(readxl)
 # (3) uncertain_variables: variables that are guess really (or "parameters")
 input_data_agency <- read_excel("data/data_agency.xlsx", na = "NA") # bio-physical 
 input_data <- read_excel("data/data_estimates.xlsx", na = "NA") # bio-physical 
-input_uncertainities <- read_excel("Data/uncertain_variables.xlsx", na = "NA")  # HeH: switch from xlsx to csv
+input_uncertainties <- read_excel("Data/uncertain_variables.xlsx", na = "NA")  # HeH: switch from xlsx to csv
 
 # merge
-estimate_data <- rbind(input_uncertainities, input_data_agency, input_data)
+estimate_data <- rbind(input_uncertainties, input_data_agency, input_data)
 
-## Programming utilities----
+################################################################################
+
+# Programming utilities----
+## only required during programming process
 ## "make variables" function to create point estimates as global variable
 ## (because when dec. function runned in mcSimulation, local variables only)
 ## from Whitney et al. (Lecture material DA)
@@ -34,7 +37,7 @@ for(i in colnames(x)) assign(i,
 }
 
 # create global vars for programming process
-#make_variables(as.estimate(input_uncertainities))
+#make_variables(as.estimate(input_uncertainties))
 #make_variables(as.estimate(input_data))
 #make_variables(as.estimate(input_data_agency))
 make_variables(as.estimate(estimate_data)) # bound data
@@ -69,7 +72,6 @@ orchard_revitalization <- function(){
 
   # Preparation of empty vectors and lists for calculations
   # NAs whether the vector is filled (as control if each function runs)
-  costs_establishment_hay_Eur <- rep(0, n_years)
   labor_fruit_establishment_h <- rep(0, n_years)
   labor_fruit_mainteance_h <- rep(NA, n_years)
   trees_dieback_number <- rep(0, n_years)
@@ -124,34 +126,57 @@ orchard_revitalization <- function(){
 
   
   # Hay benefit----
-  # HeH todo: Include risk damage! And refine the mainteance/est costs eventually
   # HeH: discuss - too humid also bad, bud not included explicitly 
-  # Heh: discuss - simplified: drought -> no yield (means that less bad cases)
-  # with harvest labor costs even tough yield is low)
+  # Heh: discuss - machinery costs not included as usually used in farm management
+
+  # potential yield
+  hay_yield_t_max <- vv(hay_yield_mean_t_ha * field_size_ha, 
+                        hay_yield_var, 
+                        n_years)
   
-  hay_yield_t_max <- vv(hay_yield_mean_t_ha *
-                          field_size_ha, hay_yield_var, n_years)
-  hay_yield_t <- hay_yield_t_max*events_drought # HeH todo add the damage as well!
-  # risk_drought_hay_decrease_mean, risk_drought_hay_decrease_var
-  hay_yield_revenue_Eur <- 2*hay_yield_t*(vv(hay_price_mean_Eur_t, 
-                                             hay_price_var_Eur_t, 
-                                             n_years)) # 2 yields per year
+  # reductions by drought (HeH discussed: other risks not addressed directly)
+  hay_damage_t <- events_drought * vv(
+                        risk_drought_hay_decrease_mean,
+                        risk_drought_hay_decrease_var,
+                        n_years)
+  
+  # actual hay yield
+  hay_yield_t <- hay_yield_t_max * (1 - hay_damage_t) 
+  
+  # price
+  # HeH discuss: price fluctuates with average hay availability (reflected by the
+  # hay yielded - much yield, on average much hay on market, low prices)
+  # aims to be similar to walnut fruit price concept (market capacity)
+  
+  hay_price_Eur_t <- case_when(
+    # if a lot hay available on market - low prices
+    hay_yield_t > uncert_hay_good_market_capacity ~ 
+      vv(hay_price_good_market_mean_Eur_t, 
+         hay_price_var, 
+         n_years),
+    # if a few hay produced in a year - high prices
+    hay_yield_t <= uncert_hay_good_market_capacity ~ 
+      vv(hay_price_bad_market_mean_Eur_t, 
+         hay_price_var, 
+         n_years),
+  )
+  
+  # revenue
+  hay_yield_revenue_Eur <- hay_price_Eur_t * hay_yield_t
   
   # hay costs
-  # Buying mow machine
-  costs_establishment_hay_Eur[1] <- hay_costs_establishment_Eur
+  # No machinery costs 
   
-  # labor costs: only if hay grows (no drought) - otherwise, no mainteance costs
+  # Labor costs: only if hay grows (no drought) - otherwise, no mainteance costs
   # HeH todo: will change if risk damage included!
   labor_mainteance_hay_h <- case_when(
-    hay_yield_t != 0 ~ vv(hay_labor_harvest_mean_h, hay_labor_harvest_var_h, n_years),
+    hay_yield_t != 0 ~ vv(hay_labor_harvest_mean_h_ha, hay_labor_harvest_var, n_years),
     TRUE ~ 0
   )
   costs_mainteance_hay_Eur <- labor_mainteance_hay_h * labor_wage_Eur_per_h_brutto
   
   # hay benefit
   benefits_hay <- hay_yield_revenue_Eur - 
-    costs_establishment_hay_Eur - 
     costs_mainteance_hay_Eur
   # plot(benefits_hay)
   
@@ -679,7 +704,7 @@ orchard_revitalization <- function(){
               NPV_orchard = NPV_orchard,
               NPV_decision = NPV_decision,
               #labor_benefit_ratio = labor_benefit_ratio,
-              diebacks_per_year = trees_dieback_number,
+              dieback_percentage_per_year = (trees_dieback_number*100)/n_trees,
               drought_mitigation = drought_mitigation,
               walnut_revenue_Eur = trees_fruit_revenue_Eur,
               walnut_yields_kg = trees_fruit_quantity_kg,
@@ -694,7 +719,7 @@ orchard_revitalization <- function(){
 # Model run----
 model_runs <- mcSimulation(estimate = as.estimate(estimate_data),
                            model_function = orchard_revitalization,
-                           numberOfModelRuns = 100,
+                           numberOfModelRuns = 1000,
                            functionSyntax = "plainNames")
 # save results
 # write.csv(model_runs, "Results/MC_orchard_revitalization_100000.csv")
@@ -707,7 +732,7 @@ model_runs <- mcSimulation(estimate = as.estimate(estimate_data),
 ## NPV distributions----
 plot_distributions(mcSimulation_object = model_runs,
                    "hist_simple_overlay",
-                   vars = c("NPV_orchard", "NPV_hay"),
+                   vars = c("NPV_decision"),
                    method = "smooth_simple_overlay",
                    #method = "boxplot_density",
                    #old_names = c("NPV_orchard", "NPV_hay"),
@@ -717,7 +742,7 @@ plot_distributions(mcSimulation_object = model_runs,
                           ", ",
                           "Joint mach. = ", machinery_joint_scenario
                         ))
-
+# Heh todo: 
 
 
 
@@ -842,7 +867,7 @@ plot_pls(pls_result_AF,
 df <- data.frame(model_runs$x, model_runs$y[1:3])
 
 # run evpi on the NPVs (the last few in the table, starting with "NPV_decision")
-EVPI <- multi_EVPI(mc = df, first_out_var = "NPV_decision")
+EVPI <- multi_EVPI(mc = df, first_out_var = "NPV_hay")
 
 # plot the EVPI results for the decision
 plot_evpi(EVPIresults = EVPI, decision_vars = "NPV_decision")
