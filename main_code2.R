@@ -1,5 +1,6 @@
 "Second approach: first iteration.
 
+# Tags:
 HeH urgent: concrete questions for next meeting with Cory
 HeH todo: next steps todo
 HeH discuss: to be discussed in term paper
@@ -9,16 +10,17 @@ HeH: annotations that add helpful information
 library(decisionSupport)
 library(tidyverse)
 library(readxl)
+library(svglite)
 
 
 # Read input----
 # The input tables are divided into:
 # (1) data_agency: data retrieved out of report from planning agency
-# (2) data_estimates: data estimated otherwise # HeH todo
-# (3) uncertain_variables: variables that are guess really (or "parameters")
+# (2) data_estimates: data estimated otherwise
+# (3) uncertain_variables: variables that are conceptualized (or "parameters")
 input_data_agency <- read_excel("data/data_agency.xlsx", na = "NA") # bio-physical 
 input_data <- read_excel("data/data_estimates.xlsx", na = "NA") # bio-physical 
-input_uncertainties <- read_excel("Data/uncertain_variables.xlsx", na = "NA")  # HeH: switch from xlsx to csv
+input_uncertainties <- read_excel("Data/uncertain_variables.xlsx", na = "NA")  
 
 # merge
 estimate_data <- rbind(input_uncertainties, input_data_agency, input_data)
@@ -27,6 +29,7 @@ estimate_data <- rbind(input_uncertainties, input_data_agency, input_data)
 
 # Programming utilities----
 ## only required during programming process
+## HeH discuss: implementtion verification
 ## "make variables" function to create point estimates as global variable
 ## (because when dec. function runned in mcSimulation, local variables only)
 ## from Whitney et al. (Lecture material DA)
@@ -45,14 +48,14 @@ make_variables(as.estimate(estimate_data)) # bound data
 ################################################################################
 
 # Scenario input----
-# HeH todo: into input table?
 # HeH discuss: number trees in concept : 2 planting periods (yr1, yr 5), 
-# HeH discuss: also idea that 90 % abgängig -> replanting with waltnus up to 30 % ?! 
+# HeH discuss: also idea that 90 % abgängig -> replanting with walnuts up to 30 % ?! 
 # HeH discuss: preserved habitat: at least 100 trees
 # discount_rate <- 1.05 # HeH discuss: differentiate between agriculture and else!!
 
 ## Machinery scenario: 
-# co-operative investment in expensive machinery; divided equally among participants
+# co-operative investment in expensive machinery; 
+# divided equally among participants
 machinery_joint_scenario <- FALSE
 machinery_joint_participants <- 10
 
@@ -132,13 +135,15 @@ orchard_revitalization <- function(){
   # potential yield
   hay_yield_t_max <- vv(hay_yield_mean_t_ha * field_size_ha, 
                         hay_yield_var, 
-                        n_years)
-  
+                        n_years) |> 
+    pmax(0) 
   # reductions by drought (HeH discussed: other risks not addressed directly)
   hay_damage_t <- events_drought * vv(
                         risk_drought_hay_decrease_mean,
                         risk_drought_hay_decrease_var,
-                        n_years)
+                        n_years) |> 
+    pmax(0) |> 
+    pmin(1)
   
   # actual hay yield
   hay_yield_t <- hay_yield_t_max * (1 - hay_damage_t) 
@@ -147,19 +152,22 @@ orchard_revitalization <- function(){
   # HeH discuss: price fluctuates with average hay availability (reflected by the
   # hay yielded - much yield, on average much hay on market, low prices)
   # aims to be similar to walnut fruit price concept (market capacity)
+  # Threshold: uncert_hay_good_market_capacity
+
   
   hay_price_Eur_t <- case_when(
-    # if a lot hay available on market - low prices
+    # if a lot hay available on market - low prices (should me most times)
     hay_yield_t > uncert_hay_good_market_capacity ~ 
-      vv(hay_price_good_market_mean_Eur_t, 
-         hay_price_var, 
-         n_years),
-    # if a few hay produced in a year - high prices
-    hay_yield_t <= uncert_hay_good_market_capacity ~ 
       vv(hay_price_bad_market_mean_Eur_t, 
          hay_price_var, 
          n_years),
-  )
+    # if hay rare in a year - high prices
+    hay_yield_t <= uncert_hay_good_market_capacity ~ 
+      vv(hay_price_good_market_mean_Eur_t, 
+         hay_price_var, 
+         n_years),
+  )|> 
+    pmax(0) 
   
   # revenue
   hay_yield_revenue_Eur <- hay_price_Eur_t * hay_yield_t
@@ -169,26 +177,28 @@ orchard_revitalization <- function(){
   
   # Labor costs: only if hay grows (no drought) - otherwise, no mainteance costs
   # HeH todo: will change if risk damage included!
-  labor_mainteance_hay_h <- case_when(
-    hay_yield_t != 0 ~ vv(hay_labor_harvest_mean_h_ha, hay_labor_harvest_var, n_years),
-    TRUE ~ 0
-  )
-  costs_mainteance_hay_Eur <- labor_mainteance_hay_h * labor_wage_Eur_per_h_brutto
+  labor_mainteance_hay_h <- vv(hay_labor_harvest_mean_h_ha * field_size_ha, 
+                               hay_labor_harvest_var, 
+                               n_years) |> 
+    pmax(0)
+  
+  costs_mainteance_hay_Eur <- labor_mainteance_hay_h * 
+                              labor_wage_Eur_per_h_brutto
   
   # hay benefit
   benefits_hay <- hay_yield_revenue_Eur - 
-    costs_mainteance_hay_Eur
+                              costs_mainteance_hay_Eur
   # plot(benefits_hay)
   
   # Orchard----
   
   ## Fruit quality and quantity----
-  # maximum yield dependent on tree ages in all years
+  # Maximum yield dependent on tree ages in all years
   # modelled as gompertz curve
-  # with estimates from report
-  # HeH discuss: max yield is estimated, as only yields that are reduced are documented!
-  fruit_yield_per_age <- gompertz_yield(
-    max_harvest = fruit_mean_kg_per_tree,
+  # with estimates from agency report
+  # HeH discuss: max yield is estimate - only risk-reduced yields are documented!
+  fruit_yield_per_tree_and_age <- gompertz_yield(
+    max_harvest = fruit_yield_mean_kg_per_tree,
     time_to_first_yield_estimate = fruit_time_to_first_yield_est,
     time_to_second_yield_estimate = fruit_time_to_first_yield_est+1,
     first_yield_estimate_percent = fruit_first_yield_percent,
@@ -197,7 +207,7 @@ orchard_revitalization <- function(){
     var_CV = fruit_yield_var_per_tree,
     no_yield_before_first_estimate = TRUE
   )
-  # plot(fruit_yield_per_age)
+  # plot(fruit_yield_per_tree_and_age)
 
   
   ## Influence of risks----
@@ -210,7 +220,7 @@ orchard_revitalization <- function(){
 
   
   #### age influence
-  # assuming it as parameterized quadratic function (curve with parameters p1, p2)
+  # Assuming it as parameterized quadratic function (curve with parameters p1, p2)
   # idea: p1 and p2 are very uncertain -> identify whether they need more detail
   # p1: age with minimum vulnerability (mature phase; vertex of curve)
   # p2: how high vulnerabilities become at beginning and end (curve compression)
@@ -222,23 +232,27 @@ orchard_revitalization <- function(){
   #### unknown risks
   # HeH discuss - included placeholder as approach focuses on risks and wants to 
   # identify how important this gap might be?
+  # HeH duscuss: lower variance to clarify the role
   tree_vulnerability_unknown <- vv(uncert_tree_vulnerability_mean,
                                    uncert_tree_vulnerability_var,
                                    n = n_years,
-                                   relative_trend = 0.5)
+                                   relative_trend = 0.5) |> 
+    pmax(0) |> 
+    pmin(1)
+  
   # plot(tree_vulnerability_unknown)
 
-  # final vulnerability: add the age influence and the placeholder risk
-  # maximized to 1 (100 % vulnerability = 100 % response to risks)
+  ### Final vulnerability: add the age influence and the placeholder risk
+  # Maximized to 1 (100 % vulnerability = 100 % response to risks)
   tree_vulnerability_per_age <- pmin(tree_vulnerability_unknown +
                                        tree_vulnerability_age_influence,
                                      1) 
-  #plot(tree_vulnerability_per_age) 
+  # plot(tree_vulnerability_per_age) 
 
   ### Damages----
 
   ### Risks for dieback
-  # depends on disease, or drought in first and last years
+  # Depends on disease, or drought
   # "How high is the risk damage probability that could lead to dieback?"
   # Is processed by chance_event later
   # HeH: discuss - does not respect if previous years have been dry etc!
@@ -248,12 +262,13 @@ orchard_revitalization <- function(){
     events_drought * vv(risk_drought_dieback_mean, # Discuss: low as we water?! No/yes?!?!
                         risk_drought_dieback_var,
                         n_years) } |> 
+    pmax(0) |> 
     pmin(1)
   # plot(risk_sum_causing_diebacks)
   
   
   ## Risks for yield reduction
-  ## depends on frost and disease
+  ## Depends on frost and disease
   ## damage: "how much yield loss if risk occurs"
   risk_sum_yield_reduction <- { events_disease * vv(risk_disease_yield_red_mean, # different pests
                                                   risk_disease_yield_red_var,
@@ -263,10 +278,13 @@ orchard_revitalization <- function(){
                       risk_frost_yield_red_var,
                       n_years, 
                       relative_trend = 0.2) } |> 
+    pmax(0) |> 
     pmin(1)
+    
+  # plot(risk_sum_yield_reduction)
   
   ## risks for quality reduction
-  # depends on disease, drought 
+  # Depends on disease, drought 
   # damage: "how much quality loss when fully affected?"
   risk_sum_quality_reduction <- { events_disease * vv(risk_disease_quali_red_mean,# different diseases
                                                     risk_disease_quali_red_var,
@@ -276,28 +294,32 @@ orchard_revitalization <- function(){
                         risk_drought_quali_red_var,
                         n_years,
                         relative_trend = 0.2) } |> 
+    pmax(0) |> 
     pmin(1)
   
   
   # plot(risk_sum_quality_reduction)
   
   ## Supply chain----
-  # principle: labor into networking to build a local supply chain
-  # if enough for building a good supply chain
-  # (labor needed depending on regional conditions),
+  # Principle: labor into networking to build a local supply chain.
+  # If enough effort to build good supply chain
+  # (exceeding the labor needed depending on regional conditions),
   # the amount of directly marketable walnuts increases.
   
   labor_supply_chain_building_h <- vv(	
                                 supply_chain_invest_mean_h,
                                 supply_chain_invest_var,
                                 n_years,
-                                relative_trend = -0.5) # assume less work once the chain is build
-                              #plot(labor_supply_chain_building_h)
+                                relative_trend = -0.5) |>  # HeH assume less work once the chain is build
+                    pmax(0)
+  
+    #plot(labor_supply_chain_building_h) 
                               
   labor_needed_for_good_market_h <- vv(uncert_invest_until_good_market_mean_h,
                                      uncert_invest_until_good_market_var,
                                      n_years,
-                                     relative_trend = -0.5) # same trend as invested
+                                     relative_trend = -0.5)# same trend as invested
+    pmax(0) 
   
   # calculate the direct marketing capacities
   direct_marketing_maximum_kg <- ifelse(
@@ -312,16 +334,16 @@ orchard_revitalization <- function(){
   # (HeH discuss: general effect on ageing pop is viewed on ind. level (discuss that))
   # This loop makes annual steps and first inspects each tree individually.
   # Dependent on the year's risk and the tree's age, trees might die. 
-  # This causes replantings (with according labor and subsidies); also the tree 
-  # age is reset and the tree takes time to mature and give yield again.
-  # After that, mainteance costs that are different for juvenile, maturing and
+  # This causes replantings; also the tree age is reset and the tree takes time
+  # to mature and give yield again.
+  # After that, maintenance costs that are different for juvenile, maturing and
   # mature trees are calculated for that year.
   # Subsequently, depending on the tree's age: yield quality and quantity summed
   # up for all trees.
-  # Resulting yield reliability and market price (depends on fruit quali and quanti).
+  # In the end, the resulting yield reliability and market 
+  # price (depends on fruit quali and quanti) are calculated.
   
   for (i in 1:n_years) {
-    
     ### Diebacks----
     # HeH discuss: include parameter for motivation_influence? i.e. watering to prevent dieback
     
@@ -331,8 +353,8 @@ orchard_revitalization <- function(){
         age <- .x   # extract the individual tree age
         vulnerability <- tree_vulnerability_per_age[age] # extract respective vulnerability
         
-        # Dependent on year's risks and the age-specific vulnerability: dieback?
-        # 1 if not (survive), 0 if no (dieback)
+        # Dependent on year's risks and the age-specific vulnerability: 
+        # Dieback? -> 1 if not (survive), 0 if no (dieback)
         chance_event(risk_sum_causing_diebacks[i] * vulnerability, 
                      value_if = 0, value_if_not = 1)  
       })
@@ -342,14 +364,14 @@ orchard_revitalization <- function(){
     ## which is, the initial number of trees minus the ones surviving
     dieback_numbers <- n_trees - sum(trees_surviving)
     
+    
     ## store for output
     trees_dieback_number[i] <- dieback_numbers
     
     ## update tree ages for the following year:
-    # trees surviving: "null" were trees die, then all together ageing 1 year
-    trees_ages[i+1,] <- (trees_ages[i,]*trees_surviving)+1
+    # Trees surviving: "null" were trees die, then all together ageing 1 year
+    trees_ages[i+1,] <- (trees_ages[i,] * trees_surviving)+ 1
 
-      
     ## Tree age influences----
     # On quantity - per tree individually
     trees_fruit_quantity_kg[i] <- 
@@ -360,10 +382,10 @@ orchard_revitalization <- function(){
        risks_yield_reduction_percent <- risk_sum_yield_reduction[i]  # "how much yield % loss if risk occurs"
        
       # Maximum yield reduced by risk damage dependent on vulnerability
-      fruit_yield_per_age[.x] * ( 1 - (risks_yield_reduction_percent * 
+      fruit_yield_per_tree_and_age[.x] * ( 1 - (risks_yield_reduction_percent * 
                                          tree_vulnerability_percent))
       }) %>%
-      sum()
+      sum() # HeH discuss: not tree-specific stored?
     
     # On quality
     # Heh discuss - not vulnerability dependent (responds to drought, diseases)?
@@ -378,12 +400,13 @@ orchard_revitalization <- function(){
           # From 100 % fruit quality, substract possible risk influences
           pmax(0, 1 - (risk_factor * tree_vulnerability))
         }) %>%
-       median() # HeH urgent: mean correct or median?
+       median() # HeH discuss: median
       
-      ## Mainteance----
       
-      # check for age stage 
-      # planting: hours are calculated later (mor efficient)
+      ## Maintenance----
+      
+      # Age-specific labor efforts
+      # Planting: hours are calculated later (more efficient)
       labor_fruit_mainteance_h[i] <- trees_ages[i, ] %>%
         unlist() %>%
         map_dbl(~ {
@@ -436,9 +459,9 @@ orchard_revitalization <- function(){
         
         tree_fruit_price_Eur_per_kg[i] <- walnut_price_direct_Eur_per_kg
 
-        
+      ## Test if no mistake in logic 
       } else { 
-        # print("mistake in pricing logic.")
+        # print("mistake in pricing logic.") # HeH discuss: implement vali
         tree_fruit_price_Eur_per_kg[i] <- walnut_price_direct_Eur_per_kg }
       
       
@@ -456,7 +479,7 @@ orchard_revitalization <- function(){
       # (2) yield_reliability = 100 - yield_unreliability [kg/Eur]
       trees_fruit_reliability_percent[i] <- ifelse(
         trees_fruit_revenue_Eur[i] > 0,
-        100-(100*sd(fruit_yield_per_age[1:i] - trees_fruit_quantity_kg[1:i], na.rm = TRUE)
+        100-(100*sd(fruit_yield_per_tree_and_age[1:i] - trees_fruit_quantity_kg[1:i], na.rm = TRUE)
              )/mean(trees_fruit_revenue_Eur[1:i]),
                  0)
   }
@@ -471,7 +494,7 @@ orchard_revitalization <- function(){
   #     xlab = "year",
   #     #ylab = "risk impacts on yield [%]",
   #     ylim = c(0,7000))
-  # lines(fruit_yield_per_age* n_trees, col = "red")
+  # lines(fruit_yield_per_tree_and_age* n_trees, col = "red")
   # plot(tree_fruit_price_Eur_per_kg)
 
 
@@ -545,13 +568,13 @@ orchard_revitalization <- function(){
   # labor: less than in establishment, depends on number of tree that died back
   labor_fruit_replanting_h <- vv(labor_fruit_replanting_mean_h_per_tree,
                                  labor_fruit_replanting_var_per_tree,
-                                 n_years) * trees_dieback_number
-  
+                                 n_years) * trees_dieback_number |> 
+      pmax(0)
 
   costs_replanting_labor <- labor_fruit_replanting_h *
     labor_wage_Eur_per_h_brutto
   
-  # total costs: material and labor; depends on invest. subsidy scenario
+  # Total costs: material and labor; depends on invest. subsidy scenario
   if (investment_subsidy_scenario) {
     costs_replanting_trees_Eur <- (costs_replanting_material + costs_replanting_labor) *
       proportion_to_be_paid
@@ -566,11 +589,12 @@ orchard_revitalization <- function(){
                                        n_trees
   
   # labor: high because digging the hole might take longer (due to roots of cherry trees)
-  # discuss: this with vv
+  # discuss: this with vv, tree specific
   labor_fruit_establishment_h[1] <- sum(
     vv(tree_labor_establishment_mean_h_per_tree,
        tree_labor_establishment_var_per_tree,
-       n_trees))
+       n_trees)) |> 
+    pmax(0)
   
   costs_establishment_labor <- labor_fruit_establishment_h[1] *
                                            labor_wage_Eur_per_h_brutto
@@ -600,7 +624,8 @@ orchard_revitalization <- function(){
                                            length(costs_mainteance_trees_machinery_Eur),
                                            by = 10)] <- vv(machinery_price,
                                                            fruit_price_machinery_var_Eur,
-                                                           n = years_buying_machines)
+                                                           n = years_buying_machines) |> pmax(0)
+  
   # plot(costs_mainteance_trees_machinery_Eur)
   
   ## organic certificate
@@ -612,12 +637,38 @@ orchard_revitalization <- function(){
   costs_mainteance_fertiliser_Eur <- n_trees * 
     vv(tree_mainteance_costs_fertiliser_mean_per_tree,
        tree_mainteance_costs_fertiliser_var,
-       n_years)
+       n_years) |> pmax(0)
                                         
   ## supply chain costs
   costs_mainteance_supply_chain_Eur <- labor_supply_chain_building_h *
     labor_wage_Eur_per_h_brutto
 
+  
+  # plot(costs_mainteance_trees_total_Eur)
+  
+  ## Timber----
+  # Principle: Harvest in last year: only trees of declining yield (> 50) harvested
+  # HeH discuss: this means  scenarios with no timber => realistic
+  aged_trees <- sum(trees_ages[timespan, ] > 50, na.rm = TRUE) # number of old trees
+  tree_timber_harvest_m3 <- vv(timber_yield_mean_m3_per_tree, 
+                           timber_yield_var, aged_trees) |> 
+    pmax(0) |> 
+    sum()
+  # HeH discuss: per tree
+  trees_timber_revenue_Eur[timespan] <- tree_timber_harvest_m3 * timber_price_Eur_m3
+  
+  trees_timber_labor_harvest_h[timespan] <- vv(
+    timber_labor_harvest_mean_h,
+    timber_labor_harvest_var,
+    aged_trees) |> 
+    pmax(0) |> 
+    sum()
+  
+  ### timber harvest
+  costs_timber_harvest_Eur[timespan] <- trees_timber_labor_harvest_h[timespan] * 
+    labor_wage_Eur_per_h_brutto
+    
+  
   ## Total labor and costs----
   ### total labor
   labor_trees_total_h <- labor_fruit_establishment_h +
@@ -625,7 +676,7 @@ orchard_revitalization <- function(){
     labor_fruit_mainteance_h +
     labor_supply_chain_building_h +
     trees_timber_labor_harvest_h
-    
+  
   ## Total costs----
   costs_mainteance_trees_total_Eur <- costs_establishment_trees_Eur +
     costs_replanting_trees_Eur +
@@ -636,23 +687,6 @@ orchard_revitalization <- function(){
     costs_mainteance_fertiliser_Eur +
     costs_timber_harvest_Eur 
   
-  # plot(costs_mainteance_trees_total_Eur)
-  
-  ## Timber----
-  # Just if explicit allowance by UNB is given?
-  # Harvest in last year: only trees of declining yield (> 50) are harvested
-  aged_trees <- sum(trees_ages[timespan, ] > 50, na.rm = TRUE) # number of old trees
-  tree_timber_harvest_m3 <- sum(vv(timber_yield_mean_m3_per_tree, 
-                           timber_yield_var, aged_trees)) # per tree
-  trees_timber_revenue_Eur[timespan] <- tree_timber_harvest_m3 * timber_price_Eur_m3
-  
-  trees_timber_labor_harvest_h[timespan] <- aged_trees * timber_labor_harvest_mean_h
-  
-  ### timber harvest
-  costs_timber_harvest_Eur[timespan] <- trees_timber_labor_harvest_h[timespan] * 
-    labor_wage_Eur_per_h_brutto
-    
-  
   # Benefits----
   
   ## Subsidies----
@@ -662,7 +696,6 @@ orchard_revitalization <- function(){
 
   #plot(tree_subidies_total_Eur)
   
-
     
   ## Fruit and timber----
   benefits_orchard <- (trees_fruit_revenue_Eur +
@@ -678,7 +711,7 @@ orchard_revitalization <- function(){
   drought_mitigation <- events_drought * (benefits_orchard - benefits_hay)
   # plot(drought_mitigation)
   
-  #NPV
+  # NPV
   # HeH: different discount rates for agricultural and "usual" products!
   # Thus, separated NPV calculation?
   NPV_orchard <- discount(benefits_orchard, 
@@ -698,7 +731,7 @@ orchard_revitalization <- function(){
   #benefit_labor_ratio_hay <- benefit_hay/labor_hay_harvest_h
   #benefit_labor_ratio <- NPV/labor_total_h
 
-  ## motivation --> influence on vulnerbailities of trees?!
+  ## motivation, knowledge --> influence on vulnerbailities of trees?!
 
   return(list(NPV_hay = NPV_hay,
               NPV_orchard = NPV_orchard,
@@ -710,7 +743,9 @@ orchard_revitalization <- function(){
               walnut_yields_kg = trees_fruit_quantity_kg,
               walnut_price_Eur = tree_fruit_price_Eur_per_kg,
               labor_h = labor_trees_total_h,
-              yield_reliability_percent = trees_fruit_reliability_percent
+              yield_reliability_percent = trees_fruit_reliability_percent,
+              hay_yields_t = hay_yield_t,
+              hay_prices_Eur = hay_price_Eur_t
               ))
   
 }
@@ -719,7 +754,7 @@ orchard_revitalization <- function(){
 # Model run----
 model_runs <- mcSimulation(estimate = as.estimate(estimate_data),
                            model_function = orchard_revitalization,
-                           numberOfModelRuns = 1000,
+                           numberOfModelRuns = 10,
                            functionSyntax = "plainNames")
 # save results
 # write.csv(model_runs, "Results/MC_orchard_revitalization_100000.csv")
@@ -730,24 +765,33 @@ model_runs <- mcSimulation(estimate = as.estimate(estimate_data),
 # Model results----
 
 ## NPV distributions----
-plot_distributions(mcSimulation_object = model_runs,
+plot_NPV <- plot_distributions(mcSimulation_object = model_runs,
                    "hist_simple_overlay",
-                   vars = c("NPV_decision"),
-                   method = "smooth_simple_overlay",
-                   #method = "boxplot_density",
+                   vars = "NPV_decision",
+                   #method = "smooth_simple_overlay",
+                   method = "boxplot_density",
                    #old_names = c("NPV_orchard", "NPV_hay"),
                    new_names = "Outcome distribution for profits") +
-                        labs(subtitle = paste(
-                          "Invest sub = ", investment_subsidy_scenario,
+                        labs(
+                          title = "Net Present Value of the decision after 55 years",
+                          subtitle = paste(
+                          "Investition subsidy = ", investment_subsidy_scenario,
                           ", ",
-                          "Joint mach. = ", machinery_joint_scenario
-                        ))
-# Heh todo: 
+                          "Joint machinery = ", machinery_joint_scenario
+                        )) + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
+plot_NPV
+# store
+#ggsave("Results/plot_NPV.svg", width = 9, plot = plot_NPV)
 
-
-
-## State vars----
-### Yeld quantity----
+## Output vars----
+### Yield----
 plot_yields <- plot_cashflow(model_runs,
               cashflow_var_name = "walnut_yields_kg",
               x_axis_name = "Timeline of intervention",
@@ -759,13 +803,42 @@ plot_yields <- plot_cashflow(model_runs,
               color_median = "blue",
               facet_labels = "walnut_yields_kg"
               ) +
-  labs(title = "Annual walnut yields",
-       subtitle = paste(
-         "Scenarios: Invest subsidy ", investment_subsidy_scenario,
-         ", ",
-         "Joint machinery ", machinery_joint_scenario
-       ))
+  labs(title = "Summed annual walnut yields") + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
+
 plot_yields
+#ggsave("Results/plot_walnut_sum_yields.svg", width = 9, plot = plot_yields)
+
+plot_yield_reliabilities <- plot_cashflow(model_runs,
+                             cashflow_var_name = "yield_reliability_percent",
+                             x_axis_name = "Timeline of intervention",
+                             y_axis_name = "Reliability [kg/Eur]",
+                             legend_name = "Quantiles (%)",
+                             legend_labels = c("5 to 95", "25 to 75", "median"),
+                             color_25_75 = "grey75",
+                             color_5_95 = "grey90",
+                             color_median = "blue",
+                             facet_labels = "yield_reliability_percent"
+) +
+  labs(title = "Walnut yield reliabilities",
+       subtitle = "Indicator dependent on annual quantity and revenues") + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
+
+plot_yield_reliabilities
+#ggsave("Results/plot_yield_reliability.svg", width = 9, plot = plot_yield_reliability)
+
 
 ### Walnut revenue----
 plot_walnut_revenue <- plot_cashflow(model_runs,
@@ -778,31 +851,70 @@ plot_walnut_revenue <- plot_cashflow(model_runs,
                                          color_5_95 = "grey90",
                                          color_median = "blue",
                                          facet_labels = "walnut_revenue_Eur") +
-              labs(title = "Annual revenue by walnut fruit sellings",
+              labs(title = "Annual revenues by walnut fruit sellings",
                    subtitle = paste(
                      "Scenarios: Invest subsidy ", investment_subsidy_scenario,
                      ", ",
-                     "Joint machinery ", machinery_joint_scenario))
+                     "Joint machinery ", machinery_joint_scenario)) +
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
 
 plot_walnut_revenue
+#ggsave("Results/plot_walnut_revenue.svg", width = 9, plot = plot_walnut_revenue)
 
-### Diebacks----
-plot_diebacks <- plot_cashflow(model_runs,
-                                     cashflow_var_name = "diebacks_per_year",
+
+## walnut prices
+plot_walnut_prices <- plot_cashflow(model_runs,
+                                     cashflow_var_name = "walnut_price_Eur",
                                      x_axis_name = "Timeline of intervention",
-                                     y_axis_name = "Number of trees",
+                                     y_axis_name = "Price [€/kg]",
                                      legend_name = "Quantiles (%)",
                                      legend_labels = c("5 to 95", "25 to 75", "median"),
                                      color_25_75 = "grey75",
                                      color_5_95 = "grey90",
                                      color_median = "blue",
-                                     facet_labels = "diebacks_per_year") +
-  labs(title = "Annual number of dead walnut trees",
-       subtitle = paste(
-         "Scenarios: Invest subsidy ", investment_subsidy_scenario,
-         ", ",
-         "Joint machinery ", machinery_joint_scenario))
+                                     facet_labels = "walnut_price_Eur") +
+  labs(title = "Annual walnut prices") + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
+
+plot_walnut_prices
+#ggsave("Results/plot_walnut_prices.svg", width = 9, plot = plot_yields)
+
+
+### Diebacks----
+plot_diebacks <- plot_cashflow(model_runs,
+                                     cashflow_var_name = "dieback_percentage_per_year",
+                                     x_axis_name = "Timeline of intervention",
+                                     y_axis_name = "Dead trees [%]",
+                                     legend_name = "Quantiles (%)",
+                                     legend_labels = c("5 to 95", "25 to 75", "median"),
+                                     color_25_75 = "grey75",
+                                     color_5_95 = "grey90",
+                                     color_median = "blue",
+                                     facet_labels = "dieback_percentage_per_year") +
+  labs(title = "Annual proportions of dying walnut trees") + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
+
 plot_diebacks
+#ggsave("Results/plot_diebacks.svg", width = 9, plot = plot_diebacks)
+
 
 ### Labor hours----
 plot_labor_h <- plot_cashflow(model_runs,
@@ -815,18 +927,70 @@ plot_labor_h <- plot_cashflow(model_runs,
                                color_5_95 = "grey90",
                                color_median = "blue",
                                facet_labels = "labor_h") +
-  labs(title = "Annual number of working hours for trees",
-       subtitle = paste(
-         "Scenarios: Invest subsidy ", investment_subsidy_scenario,
-         ", ",
-         "Joint machinery ", machinery_joint_scenario))
-plot_labor_h
+  labs(title = "Annual hours worked on trees") + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
 
-### drought mitigation----
+plot_labor_h
+#ggsave("Results/plot_labor_h.svg", width = 9, plot = plot_labor_h)
+
+### Hay----
+plot_hay_yields <- plot_cashflow(model_runs,
+                              cashflow_var_name = "hay_yields_t",
+                              x_axis_name = "Timeline of intervention",
+                              y_axis_name = "Yields [t]",
+                              legend_name = "Quantiles (%)",
+                              legend_labels = c("5 to 95", "25 to 75", "median"),
+                              color_25_75 = "grey75",
+                              color_5_95 = "grey90",
+                              color_median = "blue",
+                              facet_labels = "hay_yields_t") +
+  labs(title = "Annual hay yields") + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
+
+plot_hay_yields
+#ggsave("Results/plot_hay_yields.svg", width = 9, plot = plot_hay_yields)
+
+# Hay prices 
+plot_hay_prices <- plot_cashflow(model_runs,
+                                 cashflow_var_name = "hay_prices_Eur",
+                                 x_axis_name = "Timeline of intervention",
+                                 y_axis_name = "Price [Eur/t]",
+                                 legend_name = "Quantiles (%)",
+                                 legend_labels = c("5 to 95", "25 to 75", "median"),
+                                 color_25_75 = "grey75",
+                                 color_5_95 = "grey90",
+                                 color_median = "blue",
+                                 facet_labels = "hay_prices_Eur") +
+  labs(title = "Annual hay selling prices") + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
+
+plot_hay_prices
+#ggsave("Results/plot_hay_prices.svg", width = 9, plot = plot_hay_prices)
+
+
+### Drought mitigation----
 plot_drought_mitigation <- plot_cashflow(model_runs,
                              cashflow_var_name = "drought_mitigation",
                              x_axis_name = "Timeline of intervention",
-                             y_axis_name = "Surplus income by trees in drought years [€]",
+                             y_axis_name = "Additional income [€]",
                              legend_name = "Quantiles (%)",
                              legend_labels = c("5 to 95", "25 to 75", "median"),
                              color_25_75 = "grey75",
@@ -834,13 +998,22 @@ plot_drought_mitigation <- plot_cashflow(model_runs,
                              color_median = "blue",
                              facet_labels = "drought_mitigation"
 ) +
-  labs(title = "Financial drought risk mitigation",
+  labs(title = "Financial drought mitigation - additional income by trees",
        subtitle = paste(
          "Scenarios: Invest subsidy ", investment_subsidy_scenario,
          ", ",
          "Joint machinery ", machinery_joint_scenario
-       ))
+       )) + 
+  theme(
+    axis.title = element_text(size = 13),      # X and Y axis labels
+    axis.text = element_text(size = 10),       # X and Y axis tick labels
+    legend.text = element_text(size = 10),     # Legend text
+    legend.title = element_text(size = 12),    # Legend title
+    plot.title = element_text(size = 12, face = "bold")  # Main title
+  )
+
 plot_drought_mitigation
+#ggsave("Results/plot_drough_mitigation.svg", width = 9, plot = plot_drought_mitigation)
 
 
 ## SA using VIP-PLS----
@@ -852,25 +1025,29 @@ pls_result_AF <- plsr.mcSimulation(
 
 # plot VOI
 # with cut_off_line 1 and threshold of 0.5 
-plot_pls(pls_result_AF,
+plot_voi <- plot_pls(pls_result_AF,
          input_table = estimate_data,
          cut_off_line = 1,
-         threshold = 0.7) + 
+         threshold = 1) + 
   labs(subtitle = paste(
     "Invest sub = ", investment_subsidy_scenario,
     ", ",
     "Joint mach. = ", machinery_joint_scenario
   ))
+plot_voi
+#ggsave("Results/1_plot_voi.svg", width = 9, plot = plot_voi)
+
 
 ## VOI using EVPI----
-# save as dataframe
+# prepare data as dataframe, run evpi analysis
 df <- data.frame(model_runs$x, model_runs$y[1:3])
-
-# run evpi on the NPVs (the last few in the table, starting with "NPV_decision")
 EVPI <- multi_EVPI(mc = df, first_out_var = "NPV_hay")
 
 # plot the EVPI results for the decision
 plot_evpi(EVPIresults = EVPI, decision_vars = "NPV_decision")
+
+plot_evpi
+#ggsave("Results/1_plot_evpi.svg", width = 9, plot = plot_evpi)
 
 
                    
