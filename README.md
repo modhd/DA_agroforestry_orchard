@@ -1,4 +1,5 @@
-# holistic_agroforestry_farm_model
+# Multi-criteria decision support for agroforestry planning 
+## drawing a holistic modelling approach to accompany agroforestry establishments in Germany
 
 This model explores an [Decision Analysis Approach](https://doi.org/10.1186/s43170-023-00151-9) for agricultural interventions. 
 It represents a farmer's decision to revitalize their orchard meadows by planting walnut trees where former trees have died, to preserve the habitat character and generate additional economic income.
@@ -7,14 +8,13 @@ It represents a farmer's decision to revitalize their orchard meadows by plantin
 The decision has environmental aspects (i.e. risks by diseases, droughts, or spring frosts; tree-age specific vulnerability for those risks), economical (labor efforts, machinery prices, supply chain scenarios), and political aspects (subsidies, scneario for an investition subsidy and shared machinery investement scenario). 
 
 
-![decision model](
-4_second_conc_model_refined.jpg "Interim decision model")
+![decision model](Supplements/4_second_conc_model_refined.jpg "Interim decision model")
 
 
 The model's logic is identified in the conceptual model. 
 
 
-![conceptual model](2_influencing_factors.png "Interim conceptual model")
+![conceptual model](Supplements/2_influencing_factors.png "Interim conceptual model")
 
 
 ## Usage
@@ -35,7 +35,8 @@ Interim Approaches have been stored in "Archive" and were branched.
 
 ## Author and Acknowledge
 Heidi Hoffmann, heidi.hoffmann@stud.uni-goettingen.de
-For the Module "Project Ecosystem ANalysis and Modelling", submission 14th March 2025.
+
+For the Module "Project Ecosystem Analysis and Modelling", submission 14th March 2025.
 
 Many Thanks to Cory WHitney (Uni Bonn) for his great support and advise!
 
