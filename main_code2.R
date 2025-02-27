@@ -752,9 +752,10 @@ orchard_revitalization <- function(){
 
 ################################################################################
 # Model run----
+# Marcov Chain Monte Carlo Simulation
 model_runs <- mcSimulation(estimate = as.estimate(estimate_data),
                            model_function = orchard_revitalization,
-                           numberOfModelRuns = 10,
+                           numberOfModelRuns = 10000,
                            functionSyntax = "plainNames")
 # save results
 # write.csv(model_runs, "Results/MC_orchard_revitalization_100000.csv")
