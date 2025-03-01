@@ -1029,7 +1029,7 @@ pls_result_AF <- plsr.mcSimulation(
 plot_voi <- plot_pls(pls_result_AF,
          input_table = estimate_data,
          cut_off_line = 1,
-         threshold = 1) + 
+         threshold = 0.7) + 
   labs(subtitle = paste(
     "Invest sub = ", investment_subsidy_scenario,
     ", ",
